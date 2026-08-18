@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>豆粕工厂分布地图</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;overflow:hidden;}
+#map{width:100vw;height:100vh;z-index:1;}
+
+.toggle-item{display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;user-select:none;}
+.toggle-item input{display:none;}
+.toggle-track{width:34px;height:18px;background:rgba(255,255,255,0.2);border-radius:9px;position:relative;transition:background 0.2s;flex-shrink:0;}
+.toggle-item input:checked+.toggle-track{background:rgba(79,195,247,0.6);}
+.toggle-thumb{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);}
+.toggle-item input:checked~.toggle-track .toggle-thumb{left:16px;}
+.toggle-icon{font-size:14px;}
+#leftPanel{position:fixed;top:12px;left:12px;width:260px;max-height:calc(100vh - 24px);z-index:1000;background:rgba(30,30,40,0.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#e0e0e0;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.4);display:flex;flex-direction:column;overflow:hidden;}
+#leftPanel .ph{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 10px;border-bottom:1px solid rgba(255,255,255,0.1);flex-shrink:0;}
+#leftPanel .ph h3{font-size:14px;font-weight:600;color:#fff;}
+#leftPanel .pb{overflow-y:auto;flex:1;}
+#leftPanel .pb::-webkit-scrollbar{width:4px;}
+#leftPanel .pb::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:3px;}
+.lp-search{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.lp-search input{width:100%;padding:8px 12px;border:1px solid rgba(255,255,255,0.15);border-radius:8px;background:rgba(255,255,255,0.06);color:#e0e0e0;font-size:13px;outline:none;}
+.lp-search input::placeholder{color:#888;}
+.lp-search input:focus{border-color:rgba(66,133,244,0.6);}
+.lp-stats{padding:8px 14px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:11px;color:#999;flex-shrink:0;}
+.lp-stats .s{padding:1px 0;}.lp-stats .s span{font-weight:600;margin:0 2px;}
+.lp-stats .s.fac span{color:#e53935;}.lp-stats .s.comp span{color:#1e88e5;}
+.lp-stats .s.avail span{color:#43a047;}.lp-stats .s.watch span{color:#42a5f5;}
+
+
+
+
+#rightPanel{position:fixed;top:12px;right:12px;width:300px;max-height:calc(100vh - 80px);z-index:1000;background:rgba(30,30,40,0.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#e0e0e0;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.4);display:flex;flex-direction:column;overflow:hidden;}
+#rightPanel .ph{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 10px;border-bottom:1px solid rgba(255,255,255,0.1);flex-shrink:0;}
+#rightPanel .ph h3{font-size:14px;font-weight:600;color:#fff;}
+.rp-toggle{background:none;border:none;color:#aaa;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px;}
+.rp-toggle:hover{color:#fff;background:rgba(255,255,255,0.1);}
+#rightPanel .pb{overflow-y:auto;flex:1;}
+#rightPanel .pb::-webkit-scrollbar{width:4px;}
+#rightPanel .pb::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:3px;}
+.rp-section{margin:0;}
+.rp-sec-title{padding:8px 14px 6px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer;border-top:1px solid rgba(255,255,255,0.08);transition:color 0.15s;}
+.rp-sec-title:hover{color:#fff;}
+.rp-sec-title .arrow{transition:transform 0.2s;font-size:10px;}
+.rp-sec-title .arrow.open{transform:rotate(90deg);}
+.rp-sec-title .count{font-weight:400;font-size:11px;color:#888;margin-left:2px;}
+.rp-list{padding:0 14px 8px 32px;display:none;}
+.rp-list.open{display:block;}
+.rp-item{padding:5px 8px;font-size:11.5px;color:#bbb;border-radius:4px;cursor:pointer;line-height:1.4;margin-bottom:2px;transition:background 0.15s;}
+.rp-item:hover{background:rgba(255,255,255,0.06);color:#fff;}
+.rp-item .remark{color:#888;font-size:10.5px;margin-top:1px;}
+#toolbar{position:fixed;top:12px;left:284px;z-index:1000;background:rgba(30,30,40,0.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#e0e0e0;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.4);display:flex;flex-direction:row;align-items:center;gap:3px;padding:6px 8px;}
+#toolbar button{width:32px;height:32px;flex-shrink:0;border:none;border-radius:8px;background:rgba(255,255,255,0.08);color:#ccc;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;}
+#toolbar button:hover{background:rgba(255,255,255,0.18);color:#fff;}
+#toolbar button.active{background:rgba(66,133,244,0.5);color:#fff;}
+#toolbar .sep{width:1px;height:24px;background:rgba(255,255,255,0.15);margin:0 2px;}
+#colorPicker{position:fixed;z-index:1100;display:none;background:rgba(30,30,40,0.95);backdrop-filter:blur(12px);border-radius:10px;padding:10px;box-shadow:0 4px 20px rgba(0,0,0,0.5);}
+#colorPicker .colors{display:flex;flex-wrap:wrap;gap:6px;max-width:160px;}
+#colorPicker .colors span{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:border-color 0.2s;}
+#colorPicker .colors span:hover,#colorPicker .colors span.active{border-color:#fff;}
+#colorPicker .custom-row{margin-top:8px;display:flex;align-items:center;gap:6px;}
+#colorPicker .custom-row input[type=color]{width:30px;height:30px;border:none;border-radius:6px;cursor:pointer;background:none;padding:0;}
+#colorPicker .custom-row label{color:#aaa;font-size:12px;}
+#measureInfo{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:1000;display:none;background:rgba(30,30,40,0.92);backdrop-filter:blur(12px);color:#e0e0e0;padding:10px 20px;border-radius:10px;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,0.4);}
+#measureInfo .total{color:#4fc3f7;font-weight:700;font-size:16px;}
+#measureInfo button{margin-left:12px;padding:4px 12px;border:1px solid rgba(255,255,255,0.2);border-radius:6px;background:rgba(255,255,255,0.08);color:#ccc;cursor:pointer;font-size:12px;}
+#measureInfo button:hover{background:rgba(255,255,255,0.15);color:#fff;}
+#batchMeasurePanel{position:fixed;bottom:20px;right:12px;z-index:1000;display:none;background:rgba(30,30,40,0.92);backdrop-filter:blur(12px);color:#e0e0e0;padding:14px 18px;border-radius:10px;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,0.4);width:300px;max-height:50vh;overflow-y:auto;}
+#batchMeasurePanel::-webkit-scrollbar{width:5px;}
+#batchMeasurePanel::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:3px;}
+.batch-result-item{cursor:pointer;border-radius:4px;transition:background 0.15s;}
+.batch-result-item:hover{background:rgba(255,255,255,0.1);}
+#circleRadiusPanel{position:fixed;bottom:20px;left:70px;z-index:1000;display:none;background:rgba(30,30,40,0.92);backdrop-filter:blur(12px);color:#e0e0e0;padding:12px 16px;border-radius:10px;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,0.4);}
+#circleRadiusPanel .radius-title{font-size:12px;color:#aaa;margin-bottom:8px;}
+#circleRadiusPanel .radius-btns{display:flex;gap:6px;}
+#circleRadiusPanel .radius-btns button{padding:5px 12px;border:1px solid rgba(255,255,255,0.2);border-radius:6px;background:rgba(255,255,255,0.08);color:#ccc;cursor:pointer;font-size:12px;transition:all 0.15s;}
+#circleRadiusPanel .radius-btns button:hover{background:rgba(255,255,255,0.15);color:#fff;}
+#circleRadiusPanel .radius-btns button.active{background:rgba(79,195,247,0.4);color:#fff;border-color:rgba(79,195,247,0.5);}
+#circleRadiusPanel .radius-btns button span{color:#ff8a65;font-weight:600;margin-left:2px;}
+#baseMapSwitcher{position:fixed;bottom:80px;left:12px;z-index:1000;display:flex;gap:0;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.3);}
+#baseMapSwitcher button{padding:6px 14px;font-size:12px;border:none;background:rgba(30,30,40,0.85);color:#ccc;cursor:pointer;transition:all 0.2s;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+#baseMapSwitcher button:not(:last-child){border-right:1px solid rgba(255,255,255,0.1);}
+#baseMapSwitcher button.active{background:rgba(79,195,247,0.9);color:#fff;font-weight:600;}
+#baseMapSwitcher button:hover:not(.active){background:rgba(50,50,60,0.9);color:#fff;}
+#arrowHint,#circleHint{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:1000;display:none;background:rgba(30,30,40,0.92);backdrop-filter:blur(12px);color:#e0e0e0;padding:8px 18px;border-radius:8px;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,0.4);}
+.no-marker-interaction .leaflet-marker-icon,.no-marker-interaction .leaflet-marker-shadow{pointer-events:none!important;}
+#rightPanel.collapsed{width:44px;max-height:none;overflow:hidden;}
+#rightPanel.collapsed .pb,#rightPanel.collapsed .ph h3{display:none;}
+#rightPanel.collapsed .ph{padding:10px;border-bottom:none;justify-content:center;}
+@media(max-width:768px){#leftPanel{width:220px;}#rightPanel{width:260px;right:8px;}}
+
+.lp-toggles input[type=checkbox]{display:none;}
+.lp-toggles input[type=checkbox]:checked+.toggle-track{background:rgba(79,195,247,0.6)!important;}
+.lp-toggles input[type=checkbox]:checked+.toggle-track .toggle-thumb{left:16px!important;}
+
+/* Tooltip colors - white bg with colored border */
+.tip-cj{background:rgba(255,255,255,0.88)!important;color:#c62828!important;border:2px solid #e53935!important;border-radius:6px!important;font-size:13px!important;font-weight:600;padding:4px 10px!important;box-shadow:0 2px 8px rgba(0,0,0,0.18)!important;}
+.tip-cj::before{border-right-color:#e53935!important;}
+.tip-cj::after{border-right-color:#e53935!important;}
+.tip-comp{background:rgba(255,255,255,0.88)!important;color:#1565c0!important;border:2px solid #1e88e5!important;border-radius:6px!important;font-size:13px!important;font-weight:600;padding:4px 10px!important;box-shadow:0 2px 8px rgba(0,0,0,0.18)!important;}
+.tip-comp::before{border-right-color:#1e88e5!important;}
+.tip-comp::after{border-right-color:#1e88e5!important;}
+.tip-avail{background:rgba(255,255,255,0.88)!important;color:#2e7d32!important;border:2px solid #43a047!important;border-radius:6px!important;font-size:13px!important;font-weight:600;padding:4px 10px!important;box-shadow:0 2px 8px rgba(0,0,0,0.18)!important;}
+.tip-avail::before{border-right-color:#43a047!important;}
+.tip-avail::after{border-right-color:#43a047!important;}
+.tip-watch{background:rgba(255,255,255,0.88)!important;color:#1565c0!important;border:2px solid #42a5f5!important;border-radius:6px!important;font-size:13px!important;font-weight:600;padding:4px 10px!important;box-shadow:0 2px 8px rgba(0,0,0,0.18)!important;}
+.tip-watch::before{border-right-color:#42a5f5!important;}
+.tip-watch::after{border-right-color:#42a5f5!important;}
+.leaflet-tooltip-left::before{border-left-color:inherit!important;}
+.leaflet-tooltip-right::before{border-left-color:inherit!important;}
+.leaflet-tooltip-left::after{border-left-color:rgba(255,255,255,0.88)!important;}
+.leaflet-tooltip-right::after{border-right-color:rgba(255,255,255,0.88)!important;}
+
+/* Pinned tooltip - smaller font */
+.tip-pinned{font-size:10px!important;font-weight:500!important;padding:2px 6px!important;opacity:0.92!important;}
+
+/* Hide default ::after for non-colored tooltips to avoid artifact */
+.leaflet-tooltip::after{display:none!important;}
+.tip-cj::after,.tip-comp::after,.tip-avail::after,.tip-watch::after{display:inline-block!important;}
+
+/* Pin button in right panel */
+.pin-btn{float:right;cursor:pointer;font-size:13px;opacity:0.65;transition:opacity 0.15s;margin-left:6px;margin-right:2px;line-height:1.2;}
+.pin-btn:hover{opacity:1;}
+.pin-btn.pinned{opacity:1;}
+
+
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="baseMapSwitcher">
+  <button class="active" data-base="标准">标准</button>
+  <button data-base="卫星">卫星</button>
+  <button data-base="路网">路网</button>
+</div>
+<div id="leftPanel">
+  <div class="ph"><h3>🏭 嘉吉工厂筛选</h3></div>
+  <div class="lp-toggles" style="padding:8px 14px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;flex-wrap:wrap;gap:6px 10px;">
+      <label class="toggle-item" style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;user-select:none;color:#ccc;"><span style="color:#e53935;font-size:13px;">★</span><span>嘉吉</span><input type="checkbox" id="togCJ" checked style="display:none;"><span class="toggle-track" style="width:30px;height:16px;background:rgba(255,255,255,0.2);border-radius:8px;position:relative;transition:background 0.2s;flex-shrink:0;"><span class="toggle-thumb" style="position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span></span></label>
+      <label class="toggle-item" style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;user-select:none;color:#ccc;"><span style="color:#1e88e5;font-size:13px;">▶</span><span>竞争</span><input type="checkbox" id="togComp" checked style="display:none;"><span class="toggle-track" style="width:30px;height:16px;background:rgba(255,255,255,0.2);border-radius:8px;position:relative;transition:background 0.2s;flex-shrink:0;"><span class="toggle-thumb" style="position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span></span></label>
+      <label class="toggle-item" style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;user-select:none;color:#ccc;"><span style="color:#43a047;font-size:13px;">●</span><span>可用</span><input type="checkbox" id="togAvail" checked style="display:none;"><span class="toggle-track" style="width:30px;height:16px;background:rgba(255,255,255,0.2);border-radius:8px;position:relative;transition:background 0.2s;flex-shrink:0;"><span class="toggle-thumb" style="position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span></span></label>
+      <label class="toggle-item" style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;user-select:none;color:#ccc;"><span style="color:#42a5f5;font-size:13px;">●</span><span>关注</span><input type="checkbox" id="togWatch" checked style="display:none;"><span class="toggle-track" style="width:30px;height:16px;background:rgba(255,255,255,0.2);border-radius:8px;position:relative;transition:background 0.2s;flex-shrink:0;"><span class="toggle-thumb" style="position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span></span></label>
+    </div>
+    <div class="pb">
+    <div class="lp-search"><input type="text" id="cjSearch" placeholder="搜索嘉吉工厂..."></div>
+    <div class="lp-stats" id="lpStats"></div>
+    <!-- factory list removed -->
+  </div>
+</div>
+<div id="rightPanel">
+  <div class="ph"><h3>📋 详细明细</h3><button class="rp-toggle" id="rpToggleBtn">◀</button></div>
+  <div class="pb" id="rpBody"></div>
+</div>
+<div id="toolbar">
+  <button id="btnImport" title="导入Excel" style="font-size:14px;font-weight:bold;">📥</button>
+  <div class="sep"></div>
+  <button id="btnPolyline" title="画折线">／</button>
+  <button id="btnPolygon" title="画多边形">⬠</button>
+  <button id="btnCircle" title="画圆">○</button>
+  <button id="btnMarker" title="标记">📍</button>
+  <button id="btnArrowLine" title="箭头">➜</button>
+  <div class="sep"></div>
+  <button id="btnColor" title="颜色">🎨</button>
+  <button id="btnEdit" title="编辑">✏️</button>
+  <div class="sep"></div>
+  <button id="btnMeasure" title="测距">📏</button>
+  <button id="btnBatchMeasure" title="批量测距">📐</button>
+  <div class="sep"></div>
+  <button id="btnClear" title="清除绘制">🗑️</button>
+  <div class="sep"></div>
+  <button id="btnTooltip" title="悬停提示: 开" style="font-size:14px;opacity:1;">💬</button>
+</div>
+<input type="file" id="importFileInput" accept=".xlsx,.xls" style="display:none">
+<div id="colorPicker"><div class="colors" id="presetColors"></div><div class="custom-row"><input type="color" id="customColor" value="#3388ff"><label>自定义</label></div></div>
+<div id="measureInfo"><span id="measureHint" style="color:#aaa;font-size:12px;">点击起点</span> &nbsp;│&nbsp; 本组: <span class="total" id="segDist">-</span> km &nbsp;│&nbsp; 累计: <span class="total" id="totalDist">0</span> km &nbsp;<span id="measurePairInfo" style="color:#888;font-size:11px;"></span> <button id="btnFinishMeasure">完成</button> <button id="btnClearMeasure">清除</button></div>
+<div id="batchMeasurePanel"><div id="batchMeasureHint" style="font-size:12px;color:#aaa;margin-bottom:8px;"></div><div id="batchMeasureList" style="margin-bottom:8px;"></div><div id="batchTotalDist" style="font-size:12px;color:#ff8a65;font-weight:600;"></div><div style="margin-top:8px;display:flex;gap:6px;"><button id="btnFinishBatch" style="flex:1;padding:5px;border:1px solid rgba(255,255,255,0.2);border-radius:6px;background:rgba(255,255,255,0.08);color:#ccc;cursor:pointer;font-size:12px;">完成</button><button id="btnClearBatch" style="flex:1;padding:5px;border:1px solid rgba(255,255,255,0.2);border-radius:6px;background:rgba(255,255,255,0.08);color:#ccc;cursor:pointer;font-size:12px;">清除</button></div></div>
+<div id="circleRadiusPanel"><div class="radius-title">选择圆半径</div><div class="radius-btns"><button data-r="150000">150<span>km</span></button><button data-r="200000" class="active">200<span>km</span></button><button data-r="300000">300<span>km</span></button><button data-r="500000">500<span>km</span></button></div></div>
+<div id="arrowHint"></div>
+<div id="circleHint"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+var cjFactories=[{"name": "嘉吉饲料（抚顺）有限公司", "remark": "猪料", "lng": 123.711752, "lat": 41.802355}, {"name": "嘉吉饲料(哈尔滨)有限公司", "remark": "反刍", "lng": 126.678962, "lat": 45.624951}, {"name": "嘉吉饲料（内蒙古）有限公司", "remark": "多畜种", "lng": 109.874367, "lat": 40.617177}, {"name": "农标普瑞纳（廊坊）饲料有限公司", "remark": "多畜种", "lng": 116.8079, "lat": 39.493533}, {"name": "嘉吉动物营养（郑州）有限公司", "remark": "反刍", "lng": 113.525249, "lat": 34.794542}, {"name": "嘉吉饲料（陕西）有限公司", "remark": "多畜种", "lng": 108.11349, "lat": 34.257128}, {"name": "嘉吉动物营养（开封）有限公司", "remark": "猪料", "lng": 114.452641, "lat": 34.737134}, {"name": "嘉吉饲料（泰安）有限公司", "remark": "猪料", "lng": 117.129152, "lat": 36.109185}, {"name": "烟台农标普瑞纳饲料有限公司", "remark": "猪料", "lng": 121.369614, "lat": 37.588344}, {"name": "嘉吉动物营养饲料（济宁）有限公司", "remark": "多畜种", "lng": 116.453433, "lat": 35.423559}, {"name": "嘉吉饲料（嘉兴）有限公司", "remark": "猪料", "lng": 120.836253, "lat": 30.833231}, {"name": "嘉吉饲料（漳州）有限公司", "remark": "猪料", "lng": 118.001752, "lat": 24.402001}, {"name": "嘉吉饲料（合肥）有限公司", "remark": "多畜种", "lng": 117.090803, "lat": 32.159275}, {"name": "嘉吉饲料(长沙)有限公司", "remark": "猪料", "lng": 113.074462, "lat": 28.234671}, {"name": "嘉吉饲料(武汉)有限公司", "remark": "猪料", "lng": 113.931176, "lat": 30.688384}, {"name": "嘉吉饲料(佛山)有限公司", "remark": "猪料", "lng": 112.825668, "lat": 22.980099}, {"name": "嘉吉饲料（阳江）有限公司", "remark": "猪料", "lng": 111.943651, "lat": 22.004783}, {"name": "嘉吉饲料（镇江）有限公司", "remark": "多畜种", "lng": 119.663375, "lat": 32.194339}, {"name": "嘉吉动物营养（昆明）有限公司", "remark": "多畜种", "lng": 103.043323, "lat": 25.251042}, {"name": "嘉吉饲料(重庆)有限公司", "remark": "猪料", "lng": 105.624958, "lat": 29.402476}, {"name": "嘉吉饲料（天津）有限公司", "remark": "CPN", "lng": 117.031021, "lat": 39.418962}, {"name": "嘉吉饲料（宜春）有限公司", "remark": "CPN", "lng": 114.418747, "lat": 27.904442}, {"name": "嘉吉饲料（南宁）有限公司", "remark": "猪料", "lng": 108.143371, "lat": 23.208828}, {"name": "嘉吉饲料（吉林）有限公司", "remark": "猪料", "lng": 126.466185, "lat": 43.887264}, {"name": "嘉吉宠物食品（嘉兴）有限公司", "remark": "宠物", "lng": 120.933184, "lat": 30.593388}, {"name": "嘉吉饲料（南平）有限公司", "remark": "猪料", "lng": 118.357632, "lat": 27.077086}, {"name": "嘉吉动物营养（南宁）有限公司", "remark": "CPN", "lng": 108.30067, "lat": 22.750211}];
+var competitors=[{"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "谷实生物集团股份有限公司", "remark": "哈尔滨高新技术产业开发区，国家级重点龙头企业，年产销量达30万吨。", "lng": 126.501793, "lat": 45.698163}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "黑龙江禾丰牧业有限公司", "remark": "位于哈尔滨市，上市公司禾丰食品旗下企业，反刍年8万吨。", "lng": 126.717607, "lat": 45.607291}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "哈尔滨海大饲料有限公司", "remark": "位于阿城区，东三省产能最大的反刍饲料生产基地之一。", "lng": 126.958641, "lat": 45.565576}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "黑龙江大牧人牧业有限公司", "remark": "涵盖全系反刍用饲料，资金支持力度大。", "lng": 126.751676, "lat": 45.351315}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "哈尔滨丹富仕饲料有限公司", "remark": "位于道里区榆树镇，生产牛饲料，熟悉嘉吉业务。", "lng": 126.4467, "lat": 45.637642}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "哈尔滨博瑞饲料有限公司", "remark": "大客户竞争厂家，政府支持力度大", "lng": 126.430053, "lat": 45.651983}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "齐齐哈尔大北农饲料有限公司", "remark": "产能大，性价比突出。", "lng": 124.011307, "lat": 47.241143}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "哈尔滨大北农牧业科技有限公司", "remark": "产能大，性价比突出。", "lng": 127.151644, "lat": 45.785798}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "黑龙江正大实业有限公司", "remark": "产能大，质量稳定性高。", "lng": 126.578766, "lat": 45.92155}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "科菲特饲料（齐齐哈尔）有限公司", "remark": "性价比突出，以代工为主", "lng": 124.483157, "lat": 47.752165}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "齐齐哈尔兴泰饲料有限公司", "remark": "主要做网络客户，渠道广", "lng": 123.827774, "lat": 47.458193}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "哈尔滨远大牧业有限公司", "remark": "上市公司产能大，品牌力强，主做网络", "lng": 126.677097, "lat": 45.625912}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "中粮东大(黑龙江)饲料科技有限公司", "remark": "价格优势非常明显", "lng": 126.655776, "lat": 45.620219}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "英联饲料(辽宁)有限公司哈尔滨分公司", "remark": "渠道广，主做网络市场", "lng": 126.678402, "lat": 45.627047}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "杜尔伯特牧泉元兴饲料有限责任公司", "remark": "信贷周期长，价格低", "lng": 124.503629, "lat": 46.827144}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "沈阳禾丰牧业有限公司", "remark": "禾丰总部", "lng": 123.429807, "lat": 41.706781}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "辽宁盛得大北农牧业科技有限公司", "remark": "产能大，性价比突出。", "lng": 123.56773, "lat": 41.928286}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "长春博瑞科技股份有限公司", "remark": "大客户竞争厂家，政府支持力度大", "lng": 125.228007, "lat": 44.019856}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "通辽大北农农牧科技有限公司", "remark": "产能大，性价比突出。", "lng": 122.204057, "lat": 43.675517}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "沈阳富士大通科技有限公司", "remark": "主做终端散户", "lng": 123.570571, "lat": 41.943494}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "英联饲料(辽宁)有限公司", "remark": "渠道广，主做网络市场", "lng": 122.805061, "lat": 41.067207}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "沈阳新希望六和饲料有限公司", "remark": "主做终端散户", "lng": 123.21335, "lat": 41.783961}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "山东澳亚饲料科技有限公司", "remark": "预混料竞争厂家", "lng": 118.718146, "lat": 37.563351}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "泰高营养科技(北京)有限公司", "remark": "预混料竞争厂家", "lng": 116.410104, "lat": 39.967172}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "黑龙江佰加饲料科技有限公司", "remark": "预混料竞争厂家", "lng": 126.445215, "lat": 45.638338}, {"factory": "嘉吉饲料(哈尔滨)有限公司", "name": "江苏健荷牧业科技有限公司", "remark": "预混料竞争厂家", "lng": 119.098831, "lat": 32.222477}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头北辰饲料科技股份有限公司", "remark": "新三板挂牌公司，主营反刍类和畜禽类饲料，产品包含猪饲料。地址在东河区铝业大道233号，旗下有包头市北辰生物等子公司。全国反刍饲料十强企业，重点生产牛、羊等反刍饲料。生产基地分布在包头市东河区、土默特右旗及巴彦淖尔市。", "lng": 110.092584, "lat": 40.575028}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头九州大地生物技术有限公司", "remark": "北京九州大地全资子公司，生产畜禽、反刍动物浓缩料和精料补充料为主。位于稀土高新区炽盛路13号，年产能9万吨。", "lng": 109.876964, "lat": 40.629684}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "东方希望包头动物营养有限公司", "remark": "东方希望集团旗下，1997年成立。位于稀土高新区青工南路16号，经营范围包括饲料生产。", "lng": 109.8757, "lat": 40.63608}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古福正动物营养科技有限公司", "remark": "生产配合饲料（畜禽、反刍等）。位于东河区南海工业开发区，注册资本1500万。前身是2002年建的福正饲料厂，专业从事牛羊反刍饲料，也生产精料补充料（反刍）。", "lng": 110.078845, "lat": 40.553197}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古蒙哆牧饲料有限公司", "remark": "2026年新成立，经营范围包括饲料生产。位于东河区，注册资本268万。", "lng": 110.031562, "lat": 40.592736}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头禾辰牧业有限公司", "remark": "禾丰食品与北辰饲料合资，2022年成立。总投资1.2亿元，年产15万吨，产品覆盖复合预混料、浓缩料等。", "lng": 109.608044, "lat": 40.658471}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头市鹿丰生物技术有限公司", "remark": "专业生产反刍动物浓缩饲料和精料补充料。2010年成立，年设计产能5万吨，是包头市农牧业产业化重点龙头企业。", "lng": 109.81304, "lat": 40.681319}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古弘盛农牧业有限责任公司", "remark": "持有反刍浓缩饲料、配合饲料、精料补充料的生产许可证。", "lng": 109.984721, "lat": 41.704513}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头市北辰生物技术有限公司", "remark": "北辰饲料旗下子公司，持有添加剂预混料生产许可证。", "lng": 110.536226, "lat": 40.572651}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头市康牧饲料有限责任公司", "remark": "位于包头市农垦集团*十三分公司，主要经营饲料生产、销售。", "lng": 110.01268, "lat": 40.54725}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古星康牧科技集团有限公司", "remark": "", "lng": 109.838875, "lat": 40.627925}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头市旭日饲料科技有限公司", "remark": "", "lng": 109.916522, "lat": 40.583741}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古芃川饲料有限公司", "remark": "", "lng": 110.02764, "lat": 40.60712}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头市顺泰饲料有限责任公司", "remark": "", "lng": 109.573345, "lat": 40.58217}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "郑州市大北农饲料科技有限公司", "remark": "位于新郑机场港区空港五路，注册资本1亿人民币，是知名上市集团大北农旗下企业。", "lng": 113.560841, "lat": 34.814377}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "郑州广安生物科技股份有限公司", "remark": "河南省饲料行业龙头企业，主营猪用配合饲料及预混料，生产基地在新郑市薛店镇。", "lng": 113.494512, "lat": 34.746631}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南雄峰科技股份有限公司", "remark": "位于荥阳豫龙镇，提供高端猪用营养解决方案。", "lng": 113.623684, "lat": 34.776121}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南牧鹤（集团）饲料有限公司", "remark": "在郑州经开区设厂，产品线覆盖猪用全价料。", "lng": 113.607263, "lat": 34.725176}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "郑州三和饲料有限公司", "remark": "总部在郑州市惠济区，拥有孟津（15万吨）和驻马店（24万吨）两个猪饲料工厂，旗下有“河南双优”6万吨反刍饲料工厂。", "lng": 113.646372, "lat": 34.74225}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "郑州鑫成饲料有限公司", "remark": "位于惠济区花园口镇石桥村，主要产品涵盖猪饲料、牛、羊饲料。", "lng": 113.50127, "lat": 34.79363}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "郑州金惠农饲料有限公司", "remark": "位于荥阳市建设路中段，产品涵盖猪系列饲料、反刍动物系列饲料。", "lng": 113.66374, "lat": 34.71268}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南通洲生物科技有限公司", "remark": "位于马寨工业区，拥有年产32万吨的饲料生产线。", "lng": 113.36742, "lat": 34.74213}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南新联农饲料有限公司", "remark": "位于南阳市社旗县（郑州周边），集高端猪饲料生产研发为一体。", "lng": 113.61275, "lat": 34.69372}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南大陆农牧技术股份有限公司", "remark": "聚焦高端猪料市场，产品覆盖生猪养殖全过程。", "lng": 113.644626, "lat": 34.748624}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南爱普饲料集团", "remark": "在河南、湖北、安徽等多省设有企业。", "lng": 113.67214, "lat": 34.70625}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南诺尔饲料有限公司", "remark": "集生猪养殖、猪料研发等为一体的企业。", "lng": 113.62743, "lat": 34.75136}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南正本清源科技发展股份有限公司", "remark": "位于商丘（郑州周边），主营母猪料、动物奶粉等。", "lng": 113.571683, "lat": 34.802741}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南双胞胎饲料有限公司", "remark": "省外知名企业在河南设立的分厂。", "lng": 113.652647, "lat": 34.727366}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南天康宏展实业有限公司", "remark": "位于郑州市郑东新区，是天康生物投资1.7亿的生产基地，专业生产反刍饲料。", "lng": 113.681742, "lat": 34.676273}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南中荷反刍饲料有限公司", "remark": "位于郑州市金水区。", "lng": 113.47253, "lat": 34.73416}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南省反刍粗饲料技术服务有限公司", "remark": "位于郑州市惠济区。", "lng": 113.63125, "lat": 34.76214}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南玖邦饲料有限公司", "remark": "经营范围包括配合饲料（反刍动物）等。", "lng": 113.60274, "lat": 34.68735}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "济源市金裕饲料有限公司", "remark": "位于济源（郑州周边），生产销售配合饲料（反刍）。", "lng": 112.58437, "lat": 35.08726}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "济源市捷恩斯饲料有限公司", "remark": "位于济源（郑州周边），生产配合饲料（反刍动物）。", "lng": 112.60153, "lat": 35.06472}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "永城市双沣饲料有限公司", "remark": "位于商丘永城（郑州周边），加工销售配合饲料（反刍）。", "lng": 116.43276, "lat": 33.92654}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "滑县光明牧业饲料有限公司", "remark": "位于安阳滑县（郑州周边），核心产品为反刍饲料。", "lng": 114.55723, "lat": 35.58176}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "修武县伊赛饲料有限公司", "remark": "位于焦作修武（郑州周边）。", "lng": 113.42762, "lat": 35.23647}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "郑州绿赛农牧业有限公司", "remark": "", "lng": 113.52647, "lat": 34.76235}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南启明饲料有限公司", "remark": "", "lng": 113.65372, "lat": 34.73412}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南臻美农牧科技有限公司", "remark": "", "lng": 113.60472, "lat": 34.71634}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南联合英伟饲料有限公司", "remark": "", "lng": 113.67421, "lat": 34.69273}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南亿万中原饲料有限公司", "remark": "位于郑州市荥阳市", "lng": 113.58367, "lat": 34.77325}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "郑州六品饲料有限公司", "remark": "", "lng": 113.54273, "lat": 34.78642}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南六和饲料有限公司郑州分公司", "remark": "", "lng": 113.632471, "lat": 34.756822}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南海大九州生物科技有限公司", "remark": "位于驻马店市汝南县,有反刍.", "lng": 116.536698, "lat": 39.802656}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "英联饲料(上海)有限公司驻马店厂", "remark": "位于驻马店市遂平县希望大道,主要做猪料", "lng": 114.022727, "lat": 33.161942}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "英联饲料有限公司新乡工厂", "remark": "位于新乡市获嘉县,主要做反刍饲料.", "lng": 113.717356, "lat": 35.269448}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "焦作禾丰饲料有限公司", "remark": "焦作市沁阳市,有反刍饲料.", "lng": 112.836845, "lat": 35.03174}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "新农(郑州)饲料有限公司", "remark": "郑州市中原区红叶路11号,主要做小猪料", "lng": 113.525608, "lat": 34.799454}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南邦农饲料有限公司", "remark": "郑州市荥阳市豫龙镇建设路与荥泽大道交叉口,主要做猪料", "lng": 113.423828, "lat": 34.801399}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南大德农牧科技有限公司", "remark": "郑州市信阳市,主要做水产料.", "lng": 113.420757, "lat": 34.800269}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "烟台大信饲料有限公司", "remark": "位于海阳市发城镇，主营配合饲料、浓缩饲料（畜禽）。", "lng": 121.124632, "lat": 37.463721}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "山东天源饲料（集团）有限公司", "remark": "总部位于烟台龙口，集饲料生产、种禽孵化、种猪繁育于一体。", "lng": 121.172536, "lat": 37.402642}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "山东瑞禾源农牧科技有限公司", "remark": "旗下拥有栖霞、莱阳等多家子公司，是专业猪料公司。", "lng": 120.77364, "lat": 37.47253}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "莱阳海合农牧科技有限公司", "remark": "位于莱阳市山前店镇，广东海大集团全资子公司，生产畜禽配合饲料、浓缩饲料。", "lng": 120.734263, "lat": 36.976274}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "海阳新希望六和饲料有限公司", "remark": "位于烟台海阳市。", "lng": 121.163742, "lat": 36.782631}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "莱阳环山饲料有限公司", "remark": "位于莱阳市柏林庄街道办事处。", "lng": 120.714264, "lat": 36.964732}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "烟台龙大饲料有限公司", "remark": "位于莱阳市龙旺庄街道办事处。", "lng": 120.682743, "lat": 36.832647}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "莱阳和美华饲料有限公司", "remark": "位于莱阳市经济开发区。", "lng": 120.74263, "lat": 36.98372}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "烟台强大饲料有限责任公司", "remark": "位于栖霞市桃村镇。", "lng": 121.07364, "lat": 37.44253}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "烟台君诺生物科技有限公司", "remark": "位于海阳市行村镇，生产范围明确包含精料补充料（反刍） 及浓缩饲料（反刍）。", "lng": 121.14273, "lat": 37.41625}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "烟台海岳饲料有限公司", "remark": "位于海阳市朱吴镇，产品包含精料补充料（反刍）。", "lng": 120.76352, "lat": 36.94263}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "烟台康惠饲料有限公司", "remark": "集团化公司，旗下德州康惠为专业反刍动物饲料企业。", "lng": 121.04263, "lat": 37.37254}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "山东奕和饲料有限公司", "remark": "位于海阳市行村工业园，经营范围包括精料补充料（反刍）。", "lng": 120.70253, "lat": 36.92463}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "山东慧丰源农牧发展有限公司", "remark": "位于莱阳市吕格庄工业园，生产添加剂预混合饲料（反刍动物）。", "lng": 121.11263, "lat": 37.42536}, {"factory": "烟台农标普瑞纳饲料有限公司", "name": "海阳丰沃新农饲料有限公司", "remark": "位于烟台海阳市，是山东丰沃新农的全资子公司，在潍坊也有工厂，有大北农背景", "lng": 120.977715, "lat": 36.785503}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉正大有限公司", "remark": "位于新洲区阳逻经济开发区，年产24万吨畜禽饲料及6万吨预混料，产品含猪饲料。", "lng": 114.316427, "lat": 30.474153}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉大北农农牧发展有限公司", "remark": "位于汉南区，注册资本8000万，国家高新技术企业，主营猪饲料等。", "lng": 114.276342, "lat": 30.526371}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "康地饲料（中国）有限公司", "remark": "位于东西湖区，年产10万吨预混料和5万吨乳猪料。", "lng": 114.246731, "lat": 30.582642}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉安佑饲料科技有限公司", "remark": "位于江夏区，安佑集团旗下，主营猪饲料。", "lng": 114.437263, "lat": 30.427361}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉家家乐饲料股份有限公司", "remark": "位于江夏区，专为规模化猪场研发生产猪饲料。", "lng": 114.302746, "lat": 30.463724}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉通威饲料有限公司", "remark": "位于东西湖区，通威股份旗下，经营配合饲料等。", "lng": 114.364721, "lat": 30.416273}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉湘大饲料有限公司", "remark": "位于东西湖区。", "lng": 114.226372, "lat": 30.563721}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉双胞胎星弘饲料有限公司", "remark": "位于江夏区。", "lng": 114.293641, "lat": 30.482736}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉国雄饲料科技有限公司", "remark": "位于武汉市。", "lng": 114.237462, "lat": 30.572634}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉龙科信有限公司", "remark": "集饲料生产、加工、养殖于一体，产品涵盖猪饲料。", "lng": 114.32637, "lat": 30.45263}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉新农泰饲料有限公司", "remark": "位于蔡甸区，年产配合饲料12万吨。", "lng": 114.25364, "lat": 30.54273}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉华龙饲料有限公司", "remark": "位于汉川马口镇，年产十万吨级。", "lng": 114.21637, "lat": 30.55364}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉正达饲料有限公司", "remark": "位于蔡甸区，经营范围包括饲料生产。", "lng": 114.34263, "lat": 30.43273}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉金山饲料有限公司", "remark": "位于汉川市，生产配合饲料、浓缩饲料。", "lng": 114.19364, "lat": 30.52736}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉市德润和饲料有限公司", "remark": "", "lng": 114.27364, "lat": 30.50263}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉鑫旺饲料科技有限公司", "remark": "", "lng": 114.24637, "lat": 30.53274}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉新农翔饲料有限公司", "remark": "", "lng": 114.31263, "lat": 30.46732}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "中牧实业武汉华罗分公司", "remark": "位于东湖高新区，产品涵盖反刍等多个系列。", "lng": 114.232641, "lat": 30.567322}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉汇森科技有限公司", "remark": "研发推出反刍动物系列预混料等。", "lng": 114.26372, "lat": 30.51263}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉融信和饲料有限公司", "remark": "位于东西湖区，经营范围包含配合饲料等。", "lng": 114.33263, "lat": 30.44732}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉新宏玑生物科技有限公司", "remark": "", "lng": 114.28364, "lat": 30.49263}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "惠特奇（武汉）生物科技有限公司", "remark": "", "lng": 114.22374, "lat": 30.54732}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉华牧科技集团股份有限公司", "remark": "产品涉及猪用、禽用等。", "lng": 114.353642, "lat": 30.426371}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉艾立美饲料科技有限公司", "remark": "武汉本地饲料科技企业。", "lng": 114.25637, "lat": 30.52364}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "湖北信海生物饲料有限公司", "remark": "位于汉阳区，经营范围包括饲料生产。", "lng": 114.17263, "lat": 30.51372}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "湖北海大饲料有限公司", "remark": "位于东西湖区。", "lng": 114.372634, "lat": 30.407362}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉正大水产有限公司", "remark": "", "lng": 114.382741, "lat": 30.396273}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉今源生物科技有限公司", "remark": "位于江夏区。", "lng": 114.29364, "lat": 30.47263}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉万年青畜牧有限公司", "remark": "拥有年产8万吨饲料加工厂。", "lng": 114.18364, "lat": 30.50273}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉金华农生物科技有限公司", "remark": "业务涉及生猪、牛羊反刍养殖等领域。", "lng": 114.24372, "lat": 30.55263}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉中海粮油工业有限公司", "remark": "", "lng": 114.392633, "lat": 30.387364}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "湖北九星饲料有限公司", "remark": "位于黄陂区，经营猪饲料等。", "lng": 114.16372, "lat": 30.49263}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "湖北海达尔饲料有限公司", "remark": "武汉本地饲料企业。", "lng": 114.20364, "lat": 30.53273}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "湖北金德戈饲料有限公司", "remark": "位于东西湖区。", "lng": 114.26372, "lat": 30.51732}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "武汉天龙饲料有限公司", "remark": "列入2024年农业产业化市级重点龙头企业名单。", "lng": 114.30263, "lat": 30.45732}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南大北农饲料科技有限公司", "remark": "位于昆明市宜良县工业园区，年产量达24万吨，是云南省内领先的现代化高档猪料生产基地。", "lng": 102.742631, "lat": 25.063724}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "昆明新希望动物营养食品有限公司", "remark": "新希望六和全资子公司，位于宜良县北古城镇工业园区，年生产能力40余万吨，拥有独立的猪料专用生产线、反刍料专用生产线。", "lng": 102.713642, "lat": 25.042633}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南大台农台标农业科技有限公司", "remark": "位于宜良县工业园区，隶属广州大台农集团，注册资本8000万元。专注乳猪教槽料、保育料及母猪料生产。", "lng": 102.773641, "lat": 25.082732}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "昆明滇农饲料有限公司", "remark": "位于宜良县北古城饲料工业园，国家高新技术企业，注册资本2000万元。2022年营业收入达1.92亿元。", "lng": 102.73263, "lat": 25.05263}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "昆明云中美农牧科技有限公司", "remark": "位于宜良县北古城镇工业园区，大北农集团旗下企业，注册资本5000万元。", "lng": 102.75364, "lat": 25.07263}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "昆明丰庆饲料有限公司", "remark": "位于官渡区大板桥镇工业园区，云南饲料工业骨干企业。", "lng": 102.70364, "lat": 25.03273}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "昆明三农农牧有限公司", "remark": "位于官渡区大板桥镇，昆明市农业产业化重点龙头企业，拥有年产1.2万吨猪用饲料的生产能力。", "lng": 102.76372, "lat": 25.06732}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南远方饲料有限公司", "remark": "位于昆明市，注册资本500万人民币。", "lng": 102.72364, "lat": 25.04732}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "昆明倍特饲料有限公司", "remark": "位于官渡区，从事猪、禽、鱼、牛、羊饲料的开发与生产。", "lng": 102.78364, "lat": 25.09263}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "昆明特驱饲料有限公司", "remark": "位于宜良县北古城镇饲料工业园区，经营范围明确包含反刍料开发、销售。", "lng": 102.746371, "lat": 25.067322}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南滇大饲料有限公司", "remark": "位于宜良县北古城镇饲料工业园区，主营产品包含反刍饲料，具有精料补充料（反刍动物）的生产资质。", "lng": 102.68364, "lat": 25.01273}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南禾丰反刍饲料有限公司", "remark": "位于滇中新区大板桥街道，成立于2024年，专注于反刍饲料领域。", "lng": 102.71637, "lat": 25.03726}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南龙谷生物科技有限公司", "remark": "位于空港经济区大板桥工业园区，持有浓缩饲料(反刍)和精料补充料(反刍) 的生产许可。", "lng": 102.77637, "lat": 25.08732}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南中刍生物科技有限责任公司", "remark": "位于昆明市，专注于反刍动物领域。", "lng": 103.34263, "lat": 24.77263}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "石林牧欣特反刍科技有限公司", "remark": "位于石林彝族自治县，成立于2023年。", "lng": 103.36372, "lat": 24.79263}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南神农集团", "remark": "云南本土大型农牧企业，在昆明及周边（如大理、澄江）设有多个饲料厂。", "lng": 102.726373, "lat": 25.046274}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南大成通邦农牧发展有限责任公司", "remark": "大成集团子公司，产品涵盖家禽、猪、反刍等多种动物饲料。", "lng": 102.75364, "lat": 25.06273}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "昆明铁骑力士饲料有限公司", "remark": "位于昆明市嵩明县。", "lng": 102.736422, "lat": 25.056371}, {"factory": "嘉吉饲料（南宁）有限公司", "name": "南宁武鸣漓源粮油饲料有限公司", "remark": "主营：配合饲料、浓缩饲料（猪、禽料）", "lng": 108.284632, "lat": 23.076421}, {"factory": "嘉吉饲料（南宁）有限公司", "name": "南宁市武鸣区海大生物科技有限公司", "remark": "主营：畜禽生物配合饲料", "lng": 108.28667, "lat": 23.076704}, {"factory": "嘉吉饲料（南宁）有限公司", "name": "南宁湘大骆驼饲料有限公司", "remark": "主营：猪、禽配合饲料", "lng": 108.282147, "lat": 23.079336}, {"factory": "嘉吉饲料（南宁）有限公司", "name": "南宁大北农饲料科技有限责任公司", "remark": "主营：猪配合料、预混料", "lng": 108.272054, "lat": 23.166385}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "临沂海鼎反刍生物饲料有限公司", "remark": "各类反刍浓缩料、预混料及配合料", "lng": 118.406722, "lat": 35.024631}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "烟台丹富仕饲料有限公司", "remark": "", "lng": 121.184062, "lat": 36.712054}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "日照丹富仕饲料有限公司", "remark": "", "lng": 119.500762, "lat": 35.481495}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "丹富仕（德州）饲料有限公司", "remark": "", "lng": 116.021075, "lat": 37.112563}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "济南大北农反刍牧业科技有限公司", "remark": "", "lng": 117.823627, "lat": 36.150741}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "山东和美华集团有限公司", "remark": "", "lng": 117.413045, "lat": 36.674124}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "临沂中慧饲料有限公司", "remark": "", "lng": 118.331607, "lat": 35.061082}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "山东牧泉元兴生物科技有限责任公司", "remark": "", "lng": 117.095066, "lat": 36.692436}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "山东澳亚饲料科技有限公司", "remark": "", "lng": 117.521442, "lat": 36.704125}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "帝斯曼维生素（山东）有限公司", "remark": "", "lng": 117.624013, "lat": 36.730542}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "烟台康慧饲料有限公司", "remark": "", "lng": 120.982051, "lat": 36.806337}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "希杰（聊城）饲料有限公司", "remark": "", "lng": 115.994203, "lat": 36.437416}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "希杰（青岛）饲料有限公司", "remark": "", "lng": 120.130477, "lat": 36.342745}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "中慧农牧股份有限公司", "remark": "", "lng": 118.327566, "lat": 35.064213}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "聊城中慧饲料有限公司", "remark": "", "lng": 115.932047, "lat": 36.452106}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "德州中慧饲料有限公司", "remark": "", "lng": 116.341271, "lat": 37.451364}, {"factory": "嘉吉饲料（南平）有限公司", "name": "福州大福有限公司", "remark": "", "lng": 119.324623, "lat": 26.135047}, {"factory": "嘉吉饲料（南平）有限公司", "name": "江山大北农农牧科技有限公司", "remark": "", "lng": 118.617024, "lat": 28.743105}, {"factory": "嘉吉饲料（南平）有限公司", "name": "屏南双胞胎饲料有限公司", "remark": "", "lng": 118.994362, "lat": 26.917234}, {"factory": "嘉吉饲料（南平）有限公司", "name": "三明傲农生物科技有限公司", "remark": "", "lng": 117.723145, "lat": 26.241632}, {"factory": "嘉吉饲料（南平）有限公司", "name": "福建兴顺饲料有限公司", "remark": "", "lng": 117.364126, "lat": 26.084722}, {"factory": "嘉吉饲料（南平）有限公司", "name": "三明海大饲料有限公司", "remark": "", "lng": 117.687304, "lat": 26.267134}, {"factory": "嘉吉饲料（南平）有限公司", "name": "福州海大饲料有限公司", "remark": "", "lng": 119.467231, "lat": 26.074156}, {"factory": "嘉吉饲料（南平）有限公司", "name": "三明大北农牧科技有限公司", "remark": "", "lng": 117.693206, "lat": 26.253741}, {"factory": "嘉吉饲料（南平）有限公司", "name": "南平华农恒青农牧有限公司", "remark": "", "lng": 118.162744, "lat": 26.632017}, {"factory": "嘉吉饲料（南平）有限公司", "name": "永安鑫华港饲料有限公司", "remark": "", "lng": 117.360541, "lat": 25.967246}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "邢台海大生物科技有限公司", "remark": "", "lng": 114.487632, "lat": 37.073145}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "天津大北农生物科技有限公司", "remark": "", "lng": 117.354216, "lat": 39.687023}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "南皮大北农饲料科技有限公司", "remark": "", "lng": 116.692734, "lat": 38.024671}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "北京科高大北农生物科技有限公司", "remark": "", "lng": 116.713624, "lat": 40.106357}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "陕西石羊农业科技股份有限公司", "remark": "", "lng": 108.924014, "lat": 34.382305}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "西安铁骑力士饲料有限公司", "remark": "", "lng": 109.282134, "lat": 34.425572}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "西安禾丰饲料科技有限公司", "remark": "", "lng": 109.259803, "lat": 34.412832}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "陕西安佑生物科技有限公司", "remark": "", "lng": 108.112333, "lat": 34.249851}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "陕西正大有限公司", "remark": "", "lng": 108.959383, "lat": 34.593753}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "陕西正能农牧科技有限责任公司", "remark": "", "lng": 109.024075, "lat": 34.474725}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "陕西康达尔农牧科技有限公司", "remark": "", "lng": 109.099006, "lat": 34.544465}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "萨诺（西安）公司", "remark": "", "lng": 108.926875, "lat": 34.234525}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "陕西湘大骆驼饲料有限公司", "remark": "", "lng": 108.074436, "lat": 34.262042}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "杨凌海大饲料有限公司", "remark": "", "lng": 108.090724, "lat": 34.268817}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "杨凌东方希望动物营养有限公司", "remark": "", "lng": 108.091462, "lat": 34.270135}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "杨凌禾丰农牧有限公司", "remark": "", "lng": 108.073954, "lat": 34.261683}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "宝鸡新希望农牧有限公司", "remark": "", "lng": 107.860421, "lat": 34.220746}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "宝鸡海大农牧有限公司", "remark": "", "lng": 107.858963, "lat": 34.221852}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头北辰饲料科技股份有限公司", "remark": "新三板挂牌公司，主营反刍类和畜禽类饲料，产品包含猪饲料。地址在东河区铝业大道233号，旗下有包头市北辰生物等子公司。全国反刍饲料十强企业，重点生产牛、羊等反刍饲料。生产基地分布在包头市东河区、土默特右旗及巴彦淖尔市。", "lng": 110.092584, "lat": 40.575028}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头九州大地生物技术有限公司", "remark": "北京九州大地全资子公司，生产畜禽、反刍动物浓缩料和精料补充料为主。位于稀土高新区炽盛路13号，年产能9万吨。", "lng": 109.876964, "lat": 40.629684}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "东方希望包头动物营养有限公司", "remark": "东方希望集团旗下，1997年成立。位于稀土高新区青工南路16号，经营范围包括饲料生产。", "lng": 109.8757, "lat": 40.63608}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古福正动物营养科技有限公司", "remark": "生产配合饲料（畜禽、反刍等）。位于东河区南海工业开发区，注册资本1500万。前身是2002年建的福正饲料厂，专业从事牛羊反刍饲料，也生产精料补充料（反刍）。", "lng": 110.078845, "lat": 40.553197}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古蒙哆牧饲料有限公司", "remark": "2026年新成立，经营范围包括饲料生产。位于东河区，注册资本268万。", "lng": 110.031562, "lat": 40.592736}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头禾辰牧业有限公司", "remark": "禾丰食品与北辰饲料合资，2022年成立。总投资1.2亿元，年产15万吨，产品覆盖复合预混料、浓缩料等。", "lng": 109.608044, "lat": 40.658471}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头市鹿丰生物技术有限公司", "remark": "专业生产反刍动物浓缩饲料和精料补充料。2010年成立，年设计产能5万吨，是包头市农牧业产业化重点龙头企业。", "lng": 109.81304, "lat": 40.681319}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古弘盛农牧业有限责任公司", "remark": "持有反刍浓缩饲料、配合饲料、精料补充料的生产许可证。", "lng": 109.984721, "lat": 41.704513}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头市北辰生物技术有限公司", "remark": "北辰饲料旗下子公司，持有添加剂预混料生产许可证。", "lng": 110.536226, "lat": 40.572651}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头市康牧饲料有限责任公司", "remark": "位于包头市农垦集团*十三分公司，主要经营饲料生产、销售。", "lng": 110.01268, "lat": 40.54725}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古星康牧科技集团有限公司", "remark": "", "lng": 109.838875, "lat": 40.627925}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头市旭日饲料科技有限公司", "remark": "", "lng": 109.916522, "lat": 40.583741}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古芃川饲料有限公司", "remark": "", "lng": 110.02764, "lat": 40.60712}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头市顺泰饲料有限责任公司", "remark": "", "lng": 109.573345, "lat": 40.58217}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古牧泉元兴饲料有限责任公司", "remark": "奶牛/浓缩", "lng": 111.848095, "lat": 40.863548}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "中粮饲料（呼和浩特）有限公司", "remark": "奶牛/全价", "lng": 111.793628, "lat": 40.467838}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古大北农饲料科技有限责任公司", "remark": "奶牛/浓缩", "lng": 116.644592, "lat": 40.202076}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古正大有限公司", "remark": "浓缩/猪牛羊禽鱼", "lng": 111.802917, "lat": 40.861526}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古新正邦饲料有限公司", "remark": "猪/牛/羊/禽", "lng": 116.374865, "lat": 40.17176}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古富川饲料科技股份有限公司", "remark": "猪/羊/牛", "lng": 107.502275, "lat": 40.826099}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "北京大北农科技集团股份有限公司", "remark": "猪/浓缩", "lng": 116.696248, "lat": 40.368249}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "正大饲料（和林）有限公司", "remark": "猪", "lng": 111.777552, "lat": 40.488939}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "天康生物股份有限公司", "remark": "猪", "lng": 87.594693, "lat": 43.935215}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "陕西绿赛牧业科技有限公司", "remark": "预混料", "lng": 109.035587, "lat": 34.4968}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "萨诺（杨凌）现代动物营养有限公司", "remark": "预混料", "lng": 108.113266, "lat": 34.241979}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古博瑞饲料有限公司", "remark": "奶牛", "lng": 111.800032, "lat": 40.486353}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "包头市蒙川诺饲料有限责任公司", "remark": "肉牛/反刍", "lng": 109.585829, "lat": 40.597302}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古海大饲料有限公司", "remark": "肉牛/反刍", "lng": 111.802917, "lat": 40.861526}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "巴彦淖尔市北辰饲料科技有限公司", "remark": "肉牛/反刍", "lng": 108.63695, "lat": 40.722776}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "巴彦淖尔市大北农农牧科技有限公司", "remark": "肉牛/反刍", "lng": 107.56666, "lat": 40.873097}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "巴彦淖尔市飞虹饲料有限公司", "remark": "肉牛/反刍", "lng": 107.43301, "lat": 40.850278}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "巴彦淖尔市科河饲料有限责任公司", "remark": "肉牛/反刍", "lng": 107.514775, "lat": 40.818425}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "五原正大有限公司", "remark": "肉牛/反刍", "lng": 108.29149, "lat": 41.052007}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古金标农牧业有限公司", "remark": "肉牛/反刍", "lng": 111.809372, "lat": 40.664701}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古蒙锐牧兴饲料有限公司", "remark": "肉牛/反刍", "lng": 111.295303, "lat": 40.738873}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古蒙泰大地生物技术有限公司", "remark": "肉牛/反刍", "lng": 111.804448, "lat": 40.474139}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "内蒙古草原艺蓉科技有限责任公司", "remark": "肉牛/反刍", "lng": 111.873932, "lat": 40.850983}, {"factory": "嘉吉饲料（漳州）有限公司", "name": "漳州海大饲料有限公司", "remark": "", "lng": 117.896908, "lat": 24.366426}, {"factory": "嘉吉饲料（漳州）有限公司", "name": "漳州大北农农牧科技有限公司", "remark": "", "lng": 117.595722, "lat": 24.570402}, {"factory": "嘉吉饲料（漳州）有限公司", "name": "福建傲农生物科技集团有限公司", "remark": "", "lng": 119.552748, "lat": 26.230021}, {"factory": "嘉吉饲料（漳州）有限公司", "name": "漳州安佑饲料有限公司", "remark": "", "lng": 117.518306, "lat": 24.593451}, {"factory": "嘉吉饲料（漳州）有限公司", "name": "福建省海新集团有限公司", "remark": "", "lng": 117.879836, "lat": 24.395238}, {"factory": "嘉吉饲料（漳州）有限公司", "name": "厦门正大农牧有限公司", "remark": "", "lng": 118.129735, "lat": 24.521745}, {"factory": "嘉吉饲料(佛山)有限公司", "name": "广州大北农农牧科技有限责任公司", "remark": "广东省广州市增城朱村街朱村大道中491号（厂房A1、A2）", "lng": 113.729484, "lat": 23.273112}, {"factory": "嘉吉饲料(佛山)有限公司", "name": "正大康地阳江饲料有限公司", "remark": "广东省阳江市高新区产业转移工业园科技四路6号", "lng": 111.895155, "lat": 21.808836}, {"factory": "嘉吉饲料(佛山)有限公司", "name": "广州市海大饲料有限公司（番禺）", "remark": "广东省广州市番禺区海大工业园", "lng": 113.258181, "lat": 22.967088}, {"factory": "嘉吉饲料(佛山)有限公司", "name": "阳江漓源饲料有限公司", "remark": "广东省阳江市江城区银岭科技产业园A4-1-2号", "lng": 111.870594, "lat": 21.894149}, {"factory": "嘉吉饲料（阳江）有限公司", "name": "广州大北农农牧科技有限责任公司", "remark": "广东省广州市增城朱村街朱村大道中491号（厂房A1、A2）", "lng": 113.729484, "lat": 23.273112}, {"factory": "嘉吉饲料（阳江）有限公司", "name": "正大康地阳江饲料有限公司", "remark": "广东省阳江市高新区产业转移工业园科技四路6号", "lng": 111.895155, "lat": 21.808836}, {"factory": "嘉吉饲料（阳江）有限公司", "name": "广州市海大饲料有限公司（番禺）", "remark": "广东省广州市番禺区海大工业园", "lng": 113.258181, "lat": 22.967088}, {"factory": "嘉吉饲料（阳江）有限公司", "name": "阳江漓源饲料有限公司", "remark": "广东省阳江市江城区银岭科技产业园A4-1-2号", "lng": 111.870594, "lat": 21.894149}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南双胞胎饲料有限公司", "remark": "", "lng": 102.838363, "lat": 25.013096}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "玉溪安佑生物科技有限公司", "remark": "", "lng": 102.529264, "lat": 24.260161}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "昆明新希望动物营养食品有限公司", "remark": "", "lng": 103.195328, "lat": 24.998247}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "金钱实业（云南）有限公司", "remark": "", "lng": 102.528475, "lat": 24.259275}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "海大集团云南公司", "remark": "", "lng": 103.196975, "lat": 24.995732}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "昆明正大有限公司", "remark": "", "lng": 102.543568, "lat": 24.940232}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "大理正大有限公司", "remark": "", "lng": 100.472159, "lat": 25.396483}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南海大生物科技有限公司", "remark": "", "lng": 103.196975, "lat": 24.995732}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南青葵生物科技有限公司", "remark": "", "lng": 102.500275, "lat": 25.667175}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南丰厚农业科技有限公司", "remark": "", "lng": 102.76352, "lat": 25.029179}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南海瑞生物科技有限公司", "remark": "", "lng": 103.044866, "lat": 25.252452}, {"factory": "嘉吉动物营养（昆明）有限公司", "name": "云南百宜饲料科技有限公司", "remark": "", "lng": 102.671903, "lat": 25.093765}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "钦州湘大骆驼饲料有限公司", "remark": "", "lng": 108.624957, "lat": 22.101631}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "廊坊市稷东农业开发有限公司饲料分公司", "remark": "", "lng": 116.773447, "lat": 39.515804}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "安徽申亚农业发展有限公司", "remark": "", "lng": 116.899041, "lat": 32.058001}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "大乐民生物（陕西）有限公司", "remark": "", "lng": 108.875526, "lat": 34.669633}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "山东日照傲农生物科技有限公司", "remark": "", "lng": 118.94098, "lat": 35.449089}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "河南海鼎饲料有限公司", "remark": "", "lng": 114.565274, "lat": 34.833161}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "河南九州大地生物科技有限公司", "remark": "", "lng": 113.698966, "lat": 34.807227}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "蓝农（山东）牧业科技有限公司", "remark": "", "lng": 118.847425, "lat": 35.150025}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "新余恒青饲料有限公司", "remark": "", "lng": 114.637389, "lat": 27.803733}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "河南海大九州大地生物科技有限公司", "remark": "", "lng": 116.536698, "lat": 39.802656}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "河北大北农反刍科技有限公司", "remark": "", "lng": 115.631179, "lat": 38.818992}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "娄底大北农科技有限公司", "remark": "", "lng": 112.038625, "lat": 27.778775}, {"factory": "嘉吉饲料(武汉)有限公司", "name": "山东海能生物工程有限公司", "remark": "", "lng": 119.476747, "lat": 35.459512}];
+var availableData=[{"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "邦基正大（天津）粮油有限公司", "remark": "A", "lng": 117.694531, "lat": 39.062366}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "中粮佳悦(天津)有限公司", "remark": "A", "lng": 117.802144, "lat": 38.93423}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "河北嘉好粮油有限公司", "remark": "A", "lng": 117.827241, "lat": 38.310711}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "三河汇福粮油集团饲料蛋白有限公司", "remark": "A", "lng": 116.806444, "lat": 39.967007}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "秦皇岛金海食品工业有限公司", "remark": "A", "lng": 119.829495, "lat": 39.994583}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "中储粮油脂(唐山)有限公司", "remark": "A", "lng": 118.010642, "lat": 39.216273}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "京粮（天津）粮油工业有限公司", "remark": "A", "lng": 117.794365, "lat": 38.937604}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "路易达孚(天津)食品科技有限责任公司", "remark": "A", "lng": 117.778416, "lat": 38.941402}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "九三集团天津大豆科技有限公司", "remark": "A", "lng": 117.646001, "lat": 38.987447}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "九三集团铁岭大豆科技有限公司", "remark": "A", "lng": 123.73407, "lat": 42.316626}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "九三集团长春大豆科技股份有限公司", "remark": "A", "lng": 125.344113, "lat": 43.870011}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "嘉里粮油（营口）有限公司", "remark": "A", "lng": 122.157702, "lat": 40.626812}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "中粮油脂（大连）有限公司", "remark": "A", "lng": 121.623004, "lat": 38.974306}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "辽宁汇福荣兴蛋白科技有限公司", "remark": "A", "lng": 122.240271, "lat": 40.64431}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "中储粮油脂工业盘锦有限公司", "remark": "A", "lng": 122.106704, "lat": 40.722201}, {"factory": "农标普瑞纳（廊坊）饲料有限公司", "name": "中粮日清（大连）有限公司", "remark": "A", "lng": 121.61244, "lat": 38.966423}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "邦基正大（天津）粮油有限公司", "remark": "A", "lng": 117.694531, "lat": 39.062366}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "中粮佳悦(天津)有限公司", "remark": "A", "lng": 117.802144, "lat": 38.93423}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "河北嘉好粮油有限公司", "remark": "A", "lng": 117.827241, "lat": 38.310711}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "三河汇福粮油集团饲料蛋白有限公司", "remark": "A", "lng": 116.806444, "lat": 39.967007}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "秦皇岛金海食品工业有限公司", "remark": "A", "lng": 119.829495, "lat": 39.994583}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "中储粮油脂(唐山)有限公司", "remark": "A", "lng": 118.010642, "lat": 39.216273}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "京粮（天津）粮油工业有限公司", "remark": "A", "lng": 117.794365, "lat": 38.937604}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "路易达孚(天津)食品科技有限责任公司", "remark": "A", "lng": 117.778416, "lat": 38.941402}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "九三集团天津大豆科技有限公司", "remark": "A", "lng": 117.646001, "lat": 38.987447}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "九三集团铁岭大豆科技有限公司", "remark": "A", "lng": 123.73407, "lat": 42.316626}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "九三集团长春大豆科技股份有限公司", "remark": "A", "lng": 125.344113, "lat": 43.870011}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "嘉里粮油（营口）有限公司", "remark": "A", "lng": 122.157702, "lat": 40.626812}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "中粮油脂（大连）有限公司", "remark": "A", "lng": 121.623004, "lat": 38.974306}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "辽宁汇福荣兴蛋白科技有限公司", "remark": "A", "lng": 122.240271, "lat": 40.64431}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "中储粮油脂工业盘锦有限公司", "remark": "A", "lng": 122.106704, "lat": 40.722201}, {"factory": "嘉吉饲料（内蒙古）有限公司", "name": "中粮日清（大连）有限公司", "remark": "A", "lng": 121.61244, "lat": 38.966423}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏汇福蛋白科技有限公司", "remark": "10000吨产能", "lng": 120.571367, "lat": 32.013404}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "邦基(泰兴)粮油有限公司", "remark": "7000吨产能", "lng": 120.032047, "lat": 32.147421}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "嘉吉粮油(南通)有限公司", "remark": "6000吨产能", "lng": 120.588121, "lat": 32.011217}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "中粮东海粮油工业(张家港)有限公司", "remark": "17500吨产能", "lng": 120.624708, "lat": 31.976137}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "路易达孚(张家港)饲料蛋白有限公司", "remark": "7000吨产能", "lng": 120.611012, "lat": 31.981407}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏中海粮油工业有限公司", "remark": "7000吨产能", "lng": 120.561832, "lat": 32.014623}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "中储粮镇江粮油有限公司", "remark": "9500吨产能", "lng": 119.446124, "lat": 32.207664}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "舟山中海粮油工业有限公司", "remark": "3000吨产能", "lng": 122.080063, "lat": 30.19704}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "舟山良海粮油有限公司", "remark": "3500吨产能", "lng": 122.0702, "lat": 30.201477}, {"factory": "嘉吉饲料（重庆）有限公司", "name": "泸州中海粮油工业有限公司", "remark": "2500吨产能", "lng": 105.404342, "lat": 28.871604}, {"factory": "嘉吉饲料（重庆）有限公司", "name": "益海嘉里(重庆)粮油有限公司", "remark": "4000吨产能", "lng": 106.511404, "lat": 29.601007}, {"factory": "嘉吉饲料（重庆）有限公司", "name": "中粮油脂(重庆)有限公司", "remark": "2500吨产能", "lng": 106.488601, "lat": 29.6142}, {"factory": "嘉吉饲料（重庆）有限公司", "name": "嘉吉粮油（阳江）有限公司", "remark": "3800吨产能", "lng": 111.804447, "lat": 21.853112}, {"factory": "嘉吉饲料（佛山）有限公司", "name": "东莞嘉吉粮油有限公司", "remark": "5000吨产能", "lng": 113.654214, "lat": 22.836401}, {"factory": "嘉吉饲料（佛山）有限公司", "name": "东莞路易达孚饲料蛋白有限公司", "remark": "3000吨产能", "lng": 113.661307, "lat": 22.832744}, {"factory": "嘉吉饲料（佛山）有限公司", "name": "广州富凌食品科技有限公司", "remark": "6000吨产能", "lng": 113.571421, "lat": 22.804414}, {"factory": "嘉吉饲料（佛山）有限公司", "name": "中粮（东莞）粮油工业有限公司", "remark": "9800吨产能", "lng": 113.644106, "lat": 22.841203}, {"factory": "嘉吉饲料（佛山）有限公司", "name": "中粮新沙（东莞）粮油工业有限公司", "remark": "2300吨产能", "lng": 113.620441, "lat": 22.77624}, {"factory": "嘉吉饲料（佛山）有限公司", "name": "中储粮油脂(东莞)有限公司", "remark": "7500吨产能", "lng": 113.67124, "lat": 22.821462}, {"factory": "嘉吉饲料（佛山）有限公司", "name": "东莞市富之源饲料蛋白开发有限公司", "remark": "5000吨产能", "lng": 113.668712, "lat": 22.830441}, {"factory": "嘉吉饲料（阳江）有限公司", "name": "嘉吉粮油（阳江）有限公司", "remark": "3800吨产能", "lng": 111.804447, "lat": 21.853112}, {"factory": "嘉吉饲料（阳江）有限公司", "name": "湛江渤海农业发展有限公司", "remark": "5000吨产能", "lng": 110.360424, "lat": 21.216047}, {"factory": "嘉吉饲料（阳江）有限公司", "name": "中粮油脂（湛江）有限公司", "remark": "4500吨产能", "lng": 110.348261, "lat": 21.221714}, {"factory": "嘉吉饲料（漳州）有限公司", "name": "中纺粮油(福建)有限公司", "remark": "2500吨产能", "lng": 119.587744, "lat": 25.874201}, {"factory": "嘉吉饲料（漳州）有限公司", "name": "厦门中禾实业有限公司", "remark": "2500吨产能", "lng": 118.022141, "lat": 24.62771}, {"factory": "嘉吉饲料（漳州）有限公司", "name": "泉州福海粮油工业有限公司", "remark": "4000吨产能", "lng": 118.680017, "lat": 24.816004}, {"factory": "嘉吉饲料（漳州）有限公司", "name": "益海嘉里(潮州)饲料蛋白开发有限公司", "remark": "3000吨产能", "lng": 116.634702, "lat": 23.552017}, {"factory": "嘉吉饲料（漳州）有限公司", "name": "舟山良海粮油有限公司", "remark": "4000吨产能", "lng": 122.0702, "lat": 30.201477}, {"factory": "嘉吉饲料（南平）有限公司", "name": "福建元成豆业有限公司", "remark": "3500吨产能", "lng": 119.337602, "lat": 26.071104}, {"factory": "嘉吉饲料（南平）有限公司", "name": "泉州福海粮油工业有限公司", "remark": "4000吨产能", "lng": 118.680017, "lat": 24.816004}, {"factory": "嘉吉饲料（南平）有限公司", "name": "金光食品(宁波)有限公司", "remark": "4000吨产能", "lng": 121.821007, "lat": 29.75721}, {"factory": "嘉吉饲料（南平）有限公司", "name": "浙江新市油脂股份有限公司", "remark": "3500吨产能", "lng": 120.436601, "lat": 30.621407}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏汇福蛋白科技有限公司", "remark": "10000吨产能", "lng": 120.571367, "lat": 32.013404}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "邦基(泰兴)粮油有限公司", "remark": "7000吨产能", "lng": 120.032047, "lat": 32.147421}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "嘉吉粮油(南通)有限公司", "remark": "6000吨产能", "lng": 120.588121, "lat": 32.011217}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "中粮东海粮油工业(张家港)有限公司", "remark": "17500吨产能", "lng": 120.624708, "lat": 31.976137}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "路易达孚(张家港)饲料蛋白有限公司", "remark": "7000吨产能", "lng": 120.611012, "lat": 31.981407}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏中海粮油工业有限公司", "remark": "7000吨产能", "lng": 120.561832, "lat": 32.014623}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "中储粮镇江粮油有限公司", "remark": "9500吨产能", "lng": 119.446124, "lat": 32.207664}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "舟山中海粮油工业有限公司", "remark": "3000吨产能", "lng": 122.080063, "lat": 30.19704}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "舟山良海粮油有限公司", "remark": "4000吨产能", "lng": 122.0702, "lat": 30.201477}, {"factory": "嘉吉饲料（重庆）有限公司", "name": "泸州中海粮油工业有限公司", "remark": "2500吨产能", "lng": 105.404342, "lat": 28.871604}, {"factory": "嘉吉饲料（重庆）有限公司", "name": "益海嘉里(重庆)粮油有限公司", "remark": "4000吨产能", "lng": 106.511404, "lat": 29.601007}, {"factory": "嘉吉饲料（重庆）有限公司", "name": "中粮油脂(重庆)有限公司", "remark": "2500吨产能", "lng": 106.488601, "lat": 29.6142}, {"factory": "嘉吉饲料（重庆）有限公司", "name": "嘉吉粮油（阳江）有限公司", "remark": "3800吨产能", "lng": 111.804447, "lat": 21.853112}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "山东嘉冠粮油工业集团有限公司", "remark": "", "lng": 116.336541, "lat": 35.380264}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "山东中阳生物科技有限公司", "remark": "", "lng": 119.52771, "lat": 35.434417}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "嘉吉粮油（日照）有限公司", "remark": "", "lng": 119.564112, "lat": 35.387044}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "中纺粮油（日照）有限公司", "remark": "", "lng": 119.550741, "lat": 35.392604}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "青岛渤海科技有限公司", "remark": "", "lng": 120.17214, "lat": 36.071207}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "青岛渤海董家口粮油工业有限公司", "remark": "", "lng": 119.789159, "lat": 35.603465}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "邦基三维油脂有限公司", "remark": "", "lng": 119.540704, "lat": 35.414201}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "日照象明油脂有限公司", "remark": "", "lng": 119.546207, "lat": 35.400714}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "龙口香驰粮油有限公司", "remark": "", "lng": 120.317001, "lat": 37.634204}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "山东香驰粮油有限公司", "remark": "", "lng": 116.304204, "lat": 37.471607}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "山东口福粮油有限公司", "remark": "", "lng": 120.327107, "lat": 37.624401}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "中粮油脂（龙口）有限公司", "remark": "", "lng": 120.30741, "lat": 37.637704}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "益海(连云港)粮油工业有限公司", "remark": "", "lng": 119.374404, "lat": 34.740117}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "河南瑞茂通粮油有限公司", "remark": "", "lng": 112.46721, "lat": 34.410704}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "益海（周口）粮油工业有限公司", "remark": "", "lng": 114.730607, "lat": 33.647401}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "周口周海粮油工业有限公司", "remark": "", "lng": 114.716201, "lat": 33.651047}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "西安邦淇制油科技有限公司", "remark": "", "lng": 108.850104, "lat": 34.487714}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "中储粮油脂(新郑)有限公司", "remark": "", "lng": 113.757701, "lat": 34.444007}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "益海嘉里（兴平）食品工业有限公司", "remark": "", "lng": 108.470604, "lat": 34.28421}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "益海嘉里（武汉）粮油工业有限公司", "remark": "", "lng": 114.541711, "lat": 30.447044}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "武汉中海粮油工业有限公司", "remark": "", "lng": 114.524604, "lat": 30.454207}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "中粮粮油工业（荆州）有限公司", "remark": "", "lng": 112.270117, "lat": 30.340401}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "中粮祥瑞粮油工业(荆门)有限公司", "remark": "", "lng": 112.197407, "lat": 30.421104}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "中粮粮油工业（黄冈）有限公司", "remark": "", "lng": 114.871004, "lat": 30.467707}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "中粮油脂（广元）有限公司", "remark": "", "lng": 105.850701, "lat": 32.444204}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "中粮油脂（重庆）有限公司", "remark": "", "lng": 106.488601, "lat": 29.6142}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "益海嘉里（重庆）粮油有限公司", "remark": "", "lng": 106.511404, "lat": 29.601007}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "中储粮油脂(新郑)有限公司", "remark": "", "lng": 113.757701, "lat": 34.444007}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南瑞茂通粮油有限公司", "remark": "", "lng": 112.46721, "lat": 34.410704}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "益海（周口）粮油工业有限公司", "remark": "", "lng": 114.730607, "lat": 33.647401}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "周口周海粮油工业有限公司", "remark": "", "lng": 114.716201, "lat": 33.651047}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "中粮粮油工业（巢湖）有限公司", "remark": "", "lng": 117.844704, "lat": 31.580417}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "益海嘉里（安徽）粮油工业有限公司", "remark": "", "lng": 117.280601, "lat": 31.867104}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "山东中阳生物科技有限公司", "remark": "", "lng": 119.52771, "lat": 35.434417}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "嘉吉粮油（日照）有限公司", "remark": "", "lng": 119.564112, "lat": 35.387044}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "中纺粮油（日照）有限公司", "remark": "", "lng": 119.550741, "lat": 35.392604}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "青岛渤海科技有限公司", "remark": "", "lng": 120.17214, "lat": 36.071207}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "青岛渤海董家口粮油工业有限公司", "remark": "", "lng": 119.789159, "lat": 35.603465}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "邦基三维油脂有限公司", "remark": "", "lng": 119.540704, "lat": 35.414201}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "日照象明油脂有限公司", "remark": "", "lng": 119.546207, "lat": 35.400714}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "邦基(南京)粮油有限公司", "remark": "", "lng": 118.73421, "lat": 32.227404}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "邦基(泰兴)粮油有限公司", "remark": "", "lng": 120.032047, "lat": 32.147421}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "江苏中海粮油工业有限公司", "remark": "", "lng": 120.561832, "lat": 32.014623}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "舟山良海粮油有限公司", "remark": "", "lng": 122.0702, "lat": 30.201477}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "舟山中海粮油工业有限公司", "remark": "", "lng": 122.080063, "lat": 30.19704}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "江苏汇福蛋白科技有限公司", "remark": "", "lng": 120.571367, "lat": 32.013404}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "嘉吉粮油(南通)有限公司", "remark": "", "lng": 120.588121, "lat": 32.011217}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "路易达孚（张家港）饲料蛋白有限公司", "remark": "", "lng": 120.611012, "lat": 31.981407}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "益海 ( 泰州 ) 粮油工业有限公司", "remark": "", "lng": 119.900407, "lat": 32.44011}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "中粮东海粮油工业（张家港）有限公司", "remark": "", "lng": 120.624708, "lat": 31.976137}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "中储粮油脂（镇江）有限公司", "remark": "", "lng": 119.446124, "lat": 32.207664}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "中粮粮油工业（荆州）有限公司", "remark": "", "lng": 112.270117, "lat": 30.340401}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "中粮祥瑞粮油工业(荆门)有限公司", "remark": "", "lng": 112.197407, "lat": 30.421104}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "益海嘉里（武汉）粮油工业有限公司", "remark": "", "lng": 114.541711, "lat": 30.447044}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "武汉中海粮油工业有限公司", "remark": "", "lng": 114.524604, "lat": 30.454207}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "中粮粮油工业（黄冈）有限公司", "remark": "", "lng": 114.871004, "lat": 30.467707}];
+var watchingData=[{"factory": "嘉吉饲料（嘉兴）有限公司", "name": "益海(连云港)粮油工业有限公司", "remark": "距离较远，暂无优势", "lng": 119.298741, "lat": 34.720632}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "中粮油脂连云港基地", "remark": "预计2027年建成", "lng": 119.255647, "lat": 34.836214}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "阜宁县恒河油脂有限公司", "remark": "苏北较远", "lng": 119.697258, "lat": 33.708361}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏民康油脂有限公司", "remark": "开机较少", "lng": 119.038627, "lat": 33.631472}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏宝达粮油有限公司", "remark": "开机较少", "lng": 119.696412, "lat": 33.707624}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏喜临门油脂有限公司（原名北大荒）", "remark": "开机不稳定，相对远点", "lng": 120.761844, "lat": 33.196026}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏家惠生物科技有限公司", "remark": "民营开机不稳定", "lng": 120.443167, "lat": 32.549074}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "益海(泰州)粮油工业有限公司", "remark": "偏贵点，有机会时用", "lng": 119.878926, "lat": 32.321157}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "南通一德实业有限公司", "remark": "质量不稳定，有机会时用", "lng": 120.913742, "lat": 31.966284}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏永友食品科技有限公司", "remark": "民营开机不稳定", "lng": 120.644739, "lat": 32.060448}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "上海东辰粮油有限公司", "remark": "民营开机不稳定", "lng": 121.447468, "lat": 31.142716}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "浙江新市油脂股份有限公司", "remark": "民营开机不稳定，质量不稳定", "lng": 120.426881, "lat": 30.540227}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "金光食品(宁波)有限公司", "remark": "有机会时用", "lng": 121.841753, "lat": 29.927461}, {"factory": "嘉吉饲料（重庆）有限公司", "name": "重庆一德粮油有限公司", "remark": "质量不稳定", "lng": 107.173426, "lat": 29.670458}, {"factory": "嘉吉饲料（佛山）有限公司", "name": "广州植之源油脂实业有限公司", "remark": "开机不稳定，相对远点", "lng": 113.528719, "lat": 22.701864}, {"factory": "嘉吉饲料（佛山）有限公司", "name": "邦基粮油（东莞）有限公司", "remark": "榨菜籽为主", "lng": 113.569427, "lat": 23.040733}, {"factory": "嘉吉饲料（佛山）有限公司", "name": "益海嘉里(潮州)饲料蛋白开发有限公司", "remark": "粤东较远", "lng": 117.088875, "lat": 23.567875}, {"factory": "嘉吉饲料（南平）有限公司", "name": "福建长德蛋白科技有限公司", "remark": "民营质量不稳定，蛋白偏低", "lng": 119.487241, "lat": 25.714836}, {"factory": "嘉吉饲料（南平）有限公司", "name": "福州集佳油脂有限公司", "remark": "民营质量不稳定，蛋白偏低", "lng": 119.481633, "lat": 25.709247}, {"factory": "嘉吉饲料（南平）有限公司", "name": "福建康宏股份有限公司", "remark": "民营已停机", "lng": 119.470862, "lat": 25.718154}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "益海(连云港)粮油工业有限公司", "remark": "距离较远，暂无优势", "lng": 119.298741, "lat": 34.720632}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "中粮油脂连云港基地", "remark": "预计2027年建成", "lng": 119.255647, "lat": 34.836214}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "阜宁县恒河油脂有限公司", "remark": "苏北较远", "lng": 119.697258, "lat": 33.708361}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏民康油脂有限公司", "remark": "开机较少", "lng": 119.038627, "lat": 33.631472}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏宝达粮油有限公司", "remark": "开机较少", "lng": 119.696412, "lat": 33.707624}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏喜临门油脂有限公司（原名北大荒）", "remark": "开机不稳定，相对远点", "lng": 120.761844, "lat": 33.196026}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏家惠生物科技有限公司", "remark": "民营开机不稳定", "lng": 120.443167, "lat": 32.549074}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "益海(泰州)粮油工业有限公司", "remark": "偏贵点，有机会时用", "lng": 119.878926, "lat": 32.321157}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "南通一德实业有限公司", "remark": "质量不稳定，有机会时用", "lng": 120.913742, "lat": 31.966284}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "江苏永友食品科技有限公司", "remark": "民营开机不稳定", "lng": 120.644739, "lat": 32.060448}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "上海东辰粮油有限公司", "remark": "民营开机不稳定", "lng": 121.447468, "lat": 31.142716}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "浙江新市油脂股份有限公司", "remark": "民营开机不稳定，质量不稳定", "lng": 120.426881, "lat": 30.540227}, {"factory": "嘉吉饲料（嘉兴）有限公司", "name": "金光食品(宁波)有限公司", "remark": "有机会时用", "lng": 121.841753, "lat": 29.927461}, {"factory": "嘉吉饲料（重庆）有限公司", "name": "重庆一德粮油有限公司", "remark": "质量不稳定", "lng": 107.173426, "lat": 29.670458}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "中粮黄海粮油工业（山东）有限公司", "remark": "价格贵", "lng": 119.375564, "lat": 35.110773}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "日照市凌云海糖业集团有限公司", "remark": "", "lng": 119.508637, "lat": 35.388412}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "阜宁县恒河油脂有限公司", "remark": "", "lng": 119.697258, "lat": 33.708361}, {"factory": "嘉吉动物营养饲料（济宁）有限公司", "name": "江苏喜临门油脂有限公司（原名北大荒）", "remark": "", "lng": 120.761844, "lat": 33.196026}, {"factory": "嘉吉饲料（陕西）有限公司", "name": "河南阳光油脂集团安阳植物蛋白有限公司", "remark": "", "lng": 114.391689, "lat": 35.88457}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "阜宁县恒河油脂有限公司", "remark": "", "lng": 119.697258, "lat": 33.708361}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "江苏喜临门油脂有限公司（原名北大荒）", "remark": "", "lng": 120.761844, "lat": 33.196026}, {"factory": "嘉吉动物营养（郑州）有限公司", "name": "河南阳光油脂集团安阳植物蛋白有限公司", "remark": "", "lng": 114.391689, "lat": 35.88457}];
+
+var map=L.map('map',{zoomControl:false,preferCanvas:true}).setView([35.5,105.5],5);
+var tileLayers={
+  '标准':L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:'1234'}),
+  '卫星':L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',{subdomains:'1234'}),
+  '路网':L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}',{subdomains:'1234'})
+};
+tileLayers['标准'].addTo(map);
+var curBase='标准';
+document.querySelectorAll('#baseMapSwitcher button').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('#baseMapSwitcher button').forEach(function(b){b.classList.remove('active');});
+    btn.classList.add('active');
+    var name=btn.getAttribute('data-base');
+    if(name!==curBase){map.removeLayer(tileLayers[curBase]);tileLayers[name].addTo(map);curBase=name;}
+  });
+});
+map.createPane('drawPane');map.getPane('drawPane').style.zIndex=620;
+var drawnItems=L.layerGroup().addTo(map);
+
+var cjMarkers={},compMarkers=[],availMarkers=[],watchMarkers=[];
+var showCJ=true,showComp=true,showAvail=true,showWatch=true;
+var filterCJ=null;
+
+var starSvg='<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 32 32"><polygon points="16,2 20.5,11.5 31,13 23.5,20 25.5,30.5 16,25.5 6.5,30.5 8.5,20 1,13 11.5,11.5" fill="#e53935" stroke="#fff" stroke-width="1.5"/></svg>';
+var starIcon=L.divIcon({html:starSvg,className:'',iconSize:[20,20],iconAnchor:[10,10]});
+
+function triIcon(){
+  var s='<svg xmlns="http://www.w3.org/2000/svg" width="15" height="14" viewBox="0 0 24 22"><polygon points="12,1 23,21 1,21" fill="#1e88e5" stroke="#fff" stroke-width="1.2"/></svg>';
+  return L.divIcon({html:s,className:'',iconSize:[15,14],iconAnchor:[8,7]});
+}
+
+var tooltipPermanent=false;
+var pinnedTooltips=new Set();
+function togglePinTip(key,marker,btnEl){
+  var cls=marker._tipClass||'';var off=marker._tipOffset||[0,-8];
+  if(pinnedTooltips.has(key)){
+    pinnedTooltips.delete(key);
+    marker.unbindTooltip();
+    marker.bindTooltip(marker._tooltipText,{className:cls,direction:'top',offset:off});
+    if(btnEl){btnEl.classList.remove('pinned');btnEl.textContent='📌';}
+  }else{
+    pinnedTooltips.add(key);
+    marker.unbindTooltip();
+    marker.bindTooltip(marker._tooltipText,{className:cls+' tip-pinned',direction:'top',offset:off,permanent:true});
+    if(btnEl){btnEl.classList.add('pinned');btnEl.textContent='📍';}
+  }
+}
+
+function buildMarkers(){
+  Object.keys(cjMarkers).forEach(function(k){map.removeLayer(cjMarkers[k]);});cjMarkers={};
+  compMarkers.forEach(function(m){map.removeLayer(m);});compMarkers=[];
+  availMarkers.forEach(function(m){map.removeLayer(m);});availMarkers=[];
+  watchMarkers.forEach(function(m){map.removeLayer(m);});watchMarkers=[];
+  
+  // 嘉吉工厂
+  cjFactories.forEach(function(f){
+    var m=L.marker([f.lat,f.lng],{icon:starIcon}).bindPopup('<b>🏭 '+f.name+'</b><br>'+f.remark);
+    m.bindTooltip(f.name,{className:'tip-cj',direction:'top',offset:[0,-12],permanent:tooltipPermanent});
+    m._tooltipText=f.name;m._tipClass='tip-cj';m._tipOffset=[0,-12];
+    m.on('click',function(){
+      if(filterCJ===f.name){filterCJ=null;document.getElementById('cjSearch').value='';updateAll();return;}
+      filterCJ=f.name;document.getElementById('cjSearch').value=f.name;updateAll();
+    });
+    m.addTo(map);cjMarkers[f.name]=m;
+  });
+  
+  // 竞争厂家
+  competitors.forEach(function(c){
+    var m=L.marker([c.lat,c.lng],{icon:triIcon()}).bindPopup('<b>🔺 竞争厂家</b><br>'+c.name+'<br><small>关联: '+c.factory+'</small><br>'+c.remark);
+    m.bindTooltip(c.name,{className:'tip-comp',direction:'top',offset:[0,-8],permanent:tooltipPermanent});
+    m._tooltipText=c.name;m._tipClass='tip-comp';m._tipOffset=[0,-8];
+    m.addTo(map);compMarkers.push(m);
+  });
+  
+  // 可用
+  availableData.forEach(function(a){
+    var m=L.circleMarker([a.lat,a.lng],{radius:6,fillColor:'#43a047',color:'#fff',weight:1.5,opacity:1,fillOpacity:0.85}).bindPopup('<b>🟢 可用</b><br>'+a.name+'<br><small>关联: '+a.factory+'</small><br>'+a.remark);
+    m.bindTooltip(a.name,{className:'tip-avail',direction:'top',offset:[0,-8],permanent:tooltipPermanent});
+    m._tooltipText=a.name;m._tipClass='tip-avail';m._tipOffset=[0,-8];
+    m.addTo(map);availMarkers.push(m);
+  });
+  
+  // 关注
+  watchingData.forEach(function(w){
+    var m=L.circleMarker([w.lat,w.lng],{radius:6,fillColor:'#42a5f5',color:'#fff',weight:1.5,opacity:1,fillOpacity:0.85}).bindPopup('<b>🔵 关注</b><br>'+w.name+'<br><small>关联: '+w.factory+'</small><br>'+w.remark);
+    m.bindTooltip(w.name,{className:'tip-watch',direction:'top',offset:[0,-8],permanent:tooltipPermanent});
+    m._tooltipText=w.name;m._tipClass='tip-watch';m._tipOffset=[0,-8];
+    m.addTo(map);watchMarkers.push(m);
+  });
+
+  // Re-apply pinned tooltips after rebuild
+  pinnedTooltips.forEach(function(key){
+    var parts=key.split(':');var type=parts[0];var id=parts.slice(1).join(':');
+    var marker=null;
+    if(type==='cj')marker=cjMarkers[id];
+    else if(type==='comp')marker=compMarkers[parseInt(id)];
+    else if(type==='avail')marker=availMarkers[parseInt(id)];
+    else if(type==='watch')marker=watchMarkers[parseInt(id)];
+    if(marker&&marker._tooltipText){
+      marker.unbindTooltip();
+      marker.bindTooltip(marker._tooltipText,{className:(marker._tipClass||'')+' tip-pinned',direction:'top',offset:marker._tipOffset||[0,-8],permanent:true});
+    }
+  });
+}
+
+function norm(s){return s.replace(/（/g,'(').replace(/）/g,')').replace(/\s+/g,'').trim();}
+
+function getRelated(cjName){
+  var nn=norm(cjName),names=new Set();
+  competitors.forEach(function(c){if(norm(c.factory)===nn)names.add(c.name);});
+  availableData.forEach(function(a){if(norm(a.factory)===nn)names.add(a.name);});
+  watchingData.forEach(function(w){if(norm(w.factory)===nn)names.add(w.name);});
+  return names;
+}
+
+function updateVisibility(){
+  var rel=filterCJ?getRelated(filterCJ):null;
+  cjFactories.forEach(function(f){
+    var m=cjMarkers[f.name];if(!m)return;
+    if(!showCJ){m.remove();return;}
+    if(filterCJ){
+      if(f.name===filterCJ||norm(f.name)===norm(filterCJ)){m.addTo(map);m.setOpacity(1);}
+      else{m.remove();}
+    }else{m.addTo(map);m.setOpacity(1);}
+  });
+  competitors.forEach(function(c,i){
+    var m=compMarkers[i];if(!m)return;
+    if(!showComp){m.remove();return;}
+    if(filterCJ){if(norm(c.factory)===norm(filterCJ))m.addTo(map);else m.remove();}
+    else m.addTo(map);
+  });
+  availableData.forEach(function(a,i){
+    var m=availMarkers[i];if(!m)return;
+    if(!showAvail){m.remove();return;}
+    if(filterCJ){if(norm(a.factory)===norm(filterCJ))m.addTo(map);else m.remove();}
+    else m.addTo(map);
+  });
+  watchingData.forEach(function(w,i){
+    var m=watchMarkers[i];if(!m)return;
+    if(!showWatch){m.remove();return;}
+    if(filterCJ){if(norm(w.factory)===norm(filterCJ))m.addTo(map);else m.remove();}
+    else m.addTo(map);
+  });
+}
+
+function countVisible(){
+  var fc=0,cc=0,ac=0,wc=0;
+  cjFactories.forEach(function(f){if(showCJ&&(!filterCJ||f.name===filterCJ||norm(f.name)===norm(filterCJ)))fc++;});
+  competitors.forEach(function(c){if(showComp&&(!filterCJ||norm(c.factory)===norm(filterCJ)))cc++;});
+  availableData.forEach(function(a){if(showAvail&&(!filterCJ||norm(a.factory)===norm(filterCJ)))ac++;});
+  watchingData.forEach(function(w){if(showWatch&&(!filterCJ||norm(w.factory)===norm(filterCJ)))wc++;});
+  return{fc:fc,cc:cc,ac:ac,wc:wc};
+}
+
+function updateStats(){
+  var c=countVisible();
+  document.getElementById('lpStats').innerHTML=
+    '<div class="s fac">嘉吉工厂: <span>'+c.fc+'</span>/27</div>'+
+    '<div class="s comp">竞争厂家: <span>'+c.cc+'</span>/193</div>'+
+    '<div class="s avail">可用: <span>'+c.ac+'</span>/133</div>'+
+    '<div class="s watch">关注: <span>'+c.wc+'</span>/42</div>';
+}
+
+function updateAll(){updateVisibility();buildLeftPanel();buildRightPanel();updateStats();}
+
+// LEFT PANEL
+function buildLeftPanel(){
+  // No factory list needed - search only
+}
+
+document.getElementById('cjSearch').addEventListener('input',function(){
+  var v=this.value.trim();
+  if(!v){filterCJ=null;}
+  else{var m=cjFactories.find(function(f){return f.name.toLowerCase().indexOf(v.toLowerCase())>=0;});filterCJ=m?m.name:null;}
+  updateAll();
+});
+document.getElementById('cjSearch').addEventListener('keydown',function(e){
+  if(e.key==='Enter'){
+    var v=this.value.trim();
+    if(v){var m=cjFactories.find(function(f){return f.name.toLowerCase().indexOf(v.toLowerCase())>=0;});if(m&&cjMarkers[m.name]){filterCJ=m.name;map.setView(cjMarkers[m.name].getLatLng(),8);updateAll();}}
+  }
+  if(e.key==='Escape'){this.value='';filterCJ=null;updateAll();}
+});
+
+// RIGHT PANEL
+function buildRightPanel(){
+  var body=document.getElementById('rpBody');
+  var html='';
+  var refF=filterCJ?cjFactories.find(function(f){return f.name===filterCJ||norm(f.name)===norm(filterCJ);}):null;
+  var cjList=filterCJ?cjFactories.filter(function(f){return f.name===filterCJ||norm(f.name)===norm(filterCJ);}):cjFactories;
+  html+='<div class="rp-section"><div class="rp-sec-title" onclick="toggleSec(this)"><span class="arrow open">▶</span><span style="color:#e53935">★</span> 嘉吉工厂 <span class="count">('+cjList.length+')</span></div><div class="rp-list open">';
+  cjList.forEach(function(f){
+    var distStr=refF?'<span style="color:#ff8a65;font-weight:600;margin-left:6px;">'+haversine(refF.lat,refF.lng,f.lat,f.lng).toFixed(1)+'km</span>':'';
+    var pinCls=pinnedTooltips.has('cj:'+f.name)?'pin-btn pinned':'pin-btn';
+    var pinIco=pinnedTooltips.has('cj:'+f.name)?'📍':'📌';
+    html+='<div class="rp-item" data-type="cj" data-name="'+f.name.replace(/"/g,'&quot;')+'"><span class="'+pinCls+'" data-pinkey="cj:'+f.name.replace(/"/g,'&quot;')+'">'+pinIco+'</span><b>'+f.name+'</b>'+distStr+'<div class="remark">'+f.remark+'</div></div>';
+  });
+  html+='</div></div>';
+
+  var compList=filterCJ?competitors.filter(function(c){return norm(c.factory)===norm(filterCJ);}):competitors;
+  html+='<div class="rp-section"><div class="rp-sec-title" onclick="toggleSec(this)"><span class="arrow open">▶</span><span style="color:#1e88e5">▶</span> 竞争厂家 <span class="count">('+compList.length+')</span></div><div class="rp-list open">';
+  compList.forEach(function(c){
+    var idx=competitors.indexOf(c);
+    var distStr=refF?'<span style="color:#ff8a65;font-weight:600;margin-left:6px;">'+haversine(refF.lat,refF.lng,c.lat,c.lng).toFixed(1)+'km</span>':'';
+    var pinCls=pinnedTooltips.has('comp:'+idx)?'pin-btn pinned':'pin-btn';
+    var pinIco=pinnedTooltips.has('comp:'+idx)?'📍':'📌';
+    html+='<div class="rp-item" data-type="comp" data-idx="'+idx+'"><span class="'+pinCls+'" data-pinkey="comp:'+idx+'">'+pinIco+'</span><b>'+c.name+'</b>'+distStr+'<div class="remark">'+c.remark+'</div></div>';
+  });
+  html+='</div></div>';
+
+  var availList=filterCJ?availableData.filter(function(a){return norm(a.factory)===norm(filterCJ);}):availableData;
+  html+='<div class="rp-section"><div class="rp-sec-title" onclick="toggleSec(this)"><span class="arrow open">▶</span><span style="color:#43a047">●</span> 可用 <span class="count">('+availList.length+')</span></div><div class="rp-list open">';
+  availList.forEach(function(a){
+    var idx=availableData.indexOf(a);
+    var distStr=refF?'<span style="color:#ff8a65;font-weight:600;margin-left:6px;">'+haversine(refF.lat,refF.lng,a.lat,a.lng).toFixed(1)+'km</span>':'';
+    var pinCls=pinnedTooltips.has('avail:'+idx)?'pin-btn pinned':'pin-btn';
+    var pinIco=pinnedTooltips.has('avail:'+idx)?'📍':'📌';
+    html+='<div class="rp-item" data-type="avail" data-idx="'+idx+'"><span class="'+pinCls+'" data-pinkey="avail:'+idx+'">'+pinIco+'</span><b>'+a.name+'</b>'+distStr+'<div class="remark">'+a.remark+' | '+a.material+'</div></div>';
+  });
+  html+='</div></div>';
+
+  var watchList=filterCJ?watchingData.filter(function(w){return norm(w.factory)===norm(filterCJ);}):watchingData;
+  html+='<div class="rp-section"><div class="rp-sec-title" onclick="toggleSec(this)"><span class="arrow open">▶</span><span style="color:#42a5f5">●</span> 关注 <span class="count">('+watchList.length+')</span></div><div class="rp-list open">';
+  watchList.forEach(function(w){
+    var idx=watchingData.indexOf(w);
+    var distStr=refF?'<span style="color:#ff8a65;font-weight:600;margin-left:6px;">'+haversine(refF.lat,refF.lng,w.lat,w.lng).toFixed(1)+'km</span>':'';
+    var pinCls=pinnedTooltips.has('watch:'+idx)?'pin-btn pinned':'pin-btn';
+    var pinIco=pinnedTooltips.has('watch:'+idx)?'📍':'📌';
+    html+='<div class="rp-item" data-type="watch" data-idx="'+idx+'"><span class="'+pinCls+'" data-pinkey="watch:'+idx+'">'+pinIco+'</span><b>'+w.name+'</b>'+distStr+'<div class="remark">'+w.remark+' | '+w.material+'</div></div>';
+  });
+  html+='</div></div>';
+
+  body.innerHTML=html;
+  body.querySelectorAll('.rp-item').forEach(function(el){
+    el.addEventListener('click',function(){
+      var type=el.getAttribute('data-type');
+      if(type==='cj'){var n=el.getAttribute('data-name');if(cjMarkers[n]){map.setView(cjMarkers[n].getLatLng(),10);cjMarkers[n].openPopup();}}
+      else if(type==='comp'){var i=parseInt(el.getAttribute('data-idx'));if(compMarkers[i]){map.setView(compMarkers[i].getLatLng(),10);compMarkers[i].openPopup();}}
+      else if(type==='avail'){var i=parseInt(el.getAttribute('data-idx'));if(availMarkers[i]){map.setView(availMarkers[i].getLatLng(),10);availMarkers[i].openPopup();}}
+      else if(type==='watch'){var i=parseInt(el.getAttribute('data-idx'));if(watchMarkers[i]){map.setView(watchMarkers[i].getLatLng(),10);watchMarkers[i].openPopup();}}
+    });
+  });
+  // Pin button handlers
+  body.querySelectorAll('.pin-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var key=btn.getAttribute('data-pinkey');
+      var parts=key.split(':');var type=parts[0];var id=parts.slice(1).join(':');
+      var marker=null;
+      if(type==='cj'){marker=cjMarkers[id];}
+      else if(type==='comp'){marker=compMarkers[parseInt(id)];}
+      else if(type==='avail'){marker=availMarkers[parseInt(id)];}
+      else if(type==='watch'){marker=watchMarkers[parseInt(id)];}
+      if(marker)togglePinTip(key,marker,btn);
+    });
+  });
+}
+
+function toggleSec(el){
+  var arrow=el.querySelector('.arrow');
+  var list=el.nextElementSibling;
+  arrow.classList.toggle('open');list.classList.toggle('open');
+}
+
+document.getElementById('rpToggleBtn').addEventListener('click',function(){
+  var rp=document.getElementById('rightPanel');
+  rp.classList.toggle('collapsed');
+  this.textContent=rp.classList.contains('collapsed')?'▶':'◀';
+});
+
+// TOGGLES
+document.getElementById('togCJ').addEventListener('change',function(){showCJ=this.checked;updateAll();});
+document.getElementById('togComp').addEventListener('change',function(){showComp=this.checked;updateAll();});
+document.getElementById('togAvail').addEventListener('change',function(){showAvail=this.checked;updateAll();});
+document.getElementById('togWatch').addEventListener('change',function(){showWatch=this.checked;updateAll();});
+
+// DRAWING TOOLS
+var drawMode=null,drawTempLayer=null,currentColor='#3388ff',editMode=false;
+function deactivateAllTools(){
+  drawMode=null;editMode=false;
+  document.querySelectorAll('#toolbar button').forEach(function(b){b.classList.remove('active');});
+  cleanupDraw();map.getContainer().style.cursor='';updateMarkerInteractivity();
+}
+function cleanupDraw(){
+  if(drawTempLayer){map.removeLayer(drawTempLayer);drawTempLayer=null;}
+  if(window._arrowPreview){map.removeLayer(window._arrowPreview);window._arrowPreview=null;}
+  document.getElementById('arrowHint').style.display='none';
+  document.getElementById('circleHint').style.display='none';
+  document.getElementById('circleRadiusPanel').style.display='none';
+  map.off('click',onArrowClick);map.off('mousemove',onArrowMove);
+  circleModeActive=false;
+}
+
+// Color picker
+var presetColors=['#ff5722','#e53935','#1e88e5','#43a047','#ff9800','#9c27b0','#00bcd4','#795548','#607d8b','#333333'];
+var pcEl=document.getElementById('presetColors');
+presetColors.forEach(function(c){var s=document.createElement('span');s.style.background=c;s.setAttribute('data-color',c);if(c===currentColor)s.classList.add('active');s.addEventListener('click',function(){currentColor=c;document.querySelectorAll('#presetColors span').forEach(function(x){x.classList.remove('active');});s.classList.add('active');document.getElementById('customColor').value=c;});pcEl.appendChild(s);});
+document.getElementById('customColor').addEventListener('input',function(){currentColor=this.value;});
+document.getElementById('btnColor').addEventListener('click',function(e){
+  var p=document.getElementById('colorPicker');var r=this.getBoundingClientRect();
+  p.style.display=p.style.display==='block'?'none':'block';p.style.left=(r.right+8)+'px';p.style.top=r.top+'px';
+});
+
+// Polyline
+var polyPoints=[],polyLine=null,polyMarkers=[];
+document.getElementById('btnPolyline').addEventListener('click',function(){
+  if(drawMode==='polyline'){cleanupDraw();return;}
+  deactivateAllTools();drawMode='polyline';polyPoints=[];
+  this.classList.add('active');
+  document.getElementById('arrowHint').textContent='点击添加折线节点，双击结束';
+  document.getElementById('arrowHint').style.display='block';
+  map.getContainer().style.cursor='crosshair';updateMarkerInteractivity();
+  map.on('click',onPolyClick);map.on('dblclick',onPolyDbl);
+});
+function onPolyClick(e){
+  if(e.originalEvent.target.closest('.panel')||e.originalEvent.target.closest('#toolbar'))return;
+  polyPoints.push(e.latlng);
+  polyMarkers.push(L.circleMarker(e.latlng,{radius:3,color:currentColor,fillColor:currentColor,fillOpacity:1,weight:1,pane:'drawPane'}).addTo(map));
+  if(polyLine)map.removeLayer(polyLine);
+  polyLine=L.polyline(polyPoints,{color:currentColor,weight:2,pane:'drawPane'}).addTo(map);
+}
+function onPolyDbl(){
+  if(polyLine)polyLine.addTo(drawnItems);polyMarkers.forEach(function(m){m.addTo(drawnItems);});
+  polyPoints=[];polyLine=null;polyMarkers=[];
+  map.off('click',onPolyClick);map.off('dblclick',onPolyDbl);
+  cleanupDraw();document.getElementById('btnPolyline').classList.remove('active');drawMode=null;map.getContainer().style.cursor='';updateMarkerInteractivity();
+}
+
+// Polygon
+var polygPoints=[],polygLine=null,polygMarkers=[];
+document.getElementById('btnPolygon').addEventListener('click',function(){
+  if(drawMode==='polygon'){cleanupDraw();return;}
+  deactivateAllTools();drawMode='polygon';polygPoints=[];
+  this.classList.add('active');
+  document.getElementById('arrowHint').textContent='点击添加多边形节点，双击结束';
+  document.getElementById('arrowHint').style.display='block';
+  map.getContainer().style.cursor='crosshair';updateMarkerInteractivity();
+  map.on('click',onPolygClick);map.on('dblclick',onPolygDbl);
+});
+function onPolygClick(e){
+  if(e.originalEvent.target.closest('.panel')||e.originalEvent.target.closest('#toolbar'))return;
+  polygPoints.push(e.latlng);
+  polygMarkers.push(L.circleMarker(e.latlng,{radius:3,color:currentColor,fillColor:currentColor,fillOpacity:1,weight:1,pane:'drawPane'}).addTo(map));
+  if(polygLine)map.removeLayer(polygLine);
+  polygLine=L.polyline(polygPoints.concat([polygPoints[0]]),{color:currentColor,weight:2,pane:'drawPane'}).addTo(map);
+}
+function onPolygDbl(){
+  if(polygPoints.length>=3)L.polygon(polygPoints,{color:currentColor,weight:2,fillOpacity:0.15,pane:'drawPane'}).addTo(drawnItems);
+  polygMarkers.forEach(function(m){m.addTo(drawnItems);});
+  polygPoints=[];polygLine=null;polygMarkers=[];
+  map.off('click',onPolygClick);map.off('dblclick',onPolygDbl);
+  cleanupDraw();document.getElementById('btnPolygon').classList.remove('active');drawMode=null;map.getContainer().style.cursor='';updateMarkerInteractivity();
+}
+
+// Circle
+var circlePresetRadius=200000,circleModeActive=false;
+document.getElementById('btnCircle').addEventListener('click',function(){
+  if(drawMode==='circle'){cleanupDraw();return;}
+  deactivateAllTools();drawMode='circle';circleModeActive=true;
+  this.classList.add('active');
+  document.getElementById('circleHint').textContent='半径: '+circlePresetRadius/1000+'km | 点击地图画圆';
+  document.getElementById('circleHint').style.display='block';
+  document.getElementById('circleRadiusPanel').style.display='block';
+  map.getContainer().style.cursor='crosshair';updateMarkerInteractivity();
+});
+document.querySelectorAll('#circleRadiusPanel .radius-btns button').forEach(function(btn){
+  btn.addEventListener('click',function(e){
+    e.stopPropagation();circlePresetRadius=parseInt(btn.getAttribute('data-r'));
+    document.querySelectorAll('#circleRadiusPanel .radius-btns button').forEach(function(b){b.classList.remove('active');});
+    btn.classList.add('active');
+    document.getElementById('circleHint').textContent='半径: '+circlePresetRadius/1000+'km | 点击地图画圆';
+  });
+});
+map.on('click',function(e){
+  if(drawMode==='circle'&&circleModeActive){
+    if(e.originalEvent.target.closest('.panel')||e.originalEvent.target.closest('#toolbar')||e.originalEvent.target.closest('#circleRadiusPanel'))return;
+    L.circle(e.latlng,{radius:circlePresetRadius,color:currentColor,weight:2,fillOpacity:0.15,pane:'drawPane'}).addTo(drawnItems);
+    circleModeActive=false;drawMode=null;
+    document.getElementById('circleHint').style.display='none';
+    document.getElementById('circleRadiusPanel').style.display='none';
+    document.getElementById('btnCircle').classList.remove('active');
+    map.getContainer().style.cursor='';updateMarkerInteractivity();
+  }
+});
+
+// Marker
+document.getElementById('btnMarker').addEventListener('click',function(){
+  deactivateAllTools();drawMode='marker';
+  this.classList.add('active');map.getContainer().style.cursor='crosshair';updateMarkerInteractivity();
+  map.once('click',function(e){
+    if(e.originalEvent.target.closest('.panel')||e.originalEvent.target.closest('#toolbar')){drawMode=null;document.getElementById('btnMarker').classList.remove('active');updateMarkerInteractivity();return;}
+    var icon=L.divIcon({html:'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="'+currentColor+'" stroke="#fff" stroke-width="2"/></svg>',className:'',iconSize:[20,20],iconAnchor:[10,10]});
+    L.marker(e.latlng,{icon:icon,pane:'drawPane'}).addTo(drawnItems);
+    drawMode=null;document.getElementById('btnMarker').classList.remove('active');map.getContainer().style.cursor='';updateMarkerInteractivity();
+  });
+});
+
+// Arrow
+var arrowStep=0,arrowStart=null;
+document.getElementById('btnArrowLine').addEventListener('click',function(){
+  if(drawMode==='arrowline'){cleanupDraw();return;}
+  deactivateAllTools();drawMode='arrowline';arrowStep=0;arrowStart=null;
+  this.classList.add('active');
+  document.getElementById('arrowHint').textContent='点击设置箭头起点';
+  document.getElementById('arrowHint').style.display='block';
+  map.getContainer().style.cursor='crosshair';map.on('click',onArrowClick);map.on('mousemove',onArrowMove);
+  updateMarkerInteractivity();
+});
+function onArrowClick(e){
+  if(e.originalEvent.target.closest('.panel')||e.originalEvent.target.closest('#toolbar')||e.originalEvent.target.closest('#colorPicker'))return;
+  map.closePopup();
+  if(arrowStep===0){arrowStart=e.latlng;arrowStep=1;
+    if(drawTempLayer)map.removeLayer(drawTempLayer);
+    drawTempLayer=L.circleMarker(arrowStart,{radius:4,color:currentColor,fillColor:currentColor,fillOpacity:1,weight:2,pane:'drawPane'}).addTo(map);
+    document.getElementById('arrowHint').textContent='点击设置箭头终点';
+  }else{
+    drawArrowLine(arrowStart,e.latlng);cleanupDraw();drawMode=null;
+    document.getElementById('btnArrowLine').classList.remove('active');map.getContainer().style.cursor='';updateMarkerInteractivity();
+  }
+}
+function onArrowMove(e){
+  if(arrowStep!==1||!arrowStart)return;
+  if(window._arrowPreview)map.removeLayer(window._arrowPreview);
+  window._arrowPreview=L.polyline([arrowStart,e.latlng],{color:currentColor,weight:2,dashArray:'6,4',opacity:0.5,pane:'drawPane'}).addTo(map);
+}
+function drawArrowLine(start,end){
+  if(window._arrowPreview){map.removeLayer(window._arrowPreview);window._arrowPreview=null;}
+  L.polyline([start,end],{color:currentColor,weight:3,pane:'drawPane'}).addTo(drawnItems);
+  var angle=Math.atan2(end.lng-start.lng,end.lat-start.lat)*180/Math.PI;
+  var svg='<svg width="28" height="28" viewBox="0 0 28 28" style="transform:rotate('+angle+'deg)"><polygon points="14,2 24,26 14,19 4,26" fill="'+currentColor+'" opacity="0.9"/></svg>';
+  L.marker(end,{icon:L.divIcon({html:svg,className:'',iconSize:[28,28],iconAnchor:[14,14]}),interactive:false,pane:'drawPane'}).addTo(drawnItems);
+  L.circleMarker(start,{radius:4,color:currentColor,fillColor:currentColor,fillOpacity:1,weight:1,pane:'drawPane'}).addTo(drawnItems);
+}
+
+// Edit
+document.getElementById('btnEdit').addEventListener('click',function(){
+  deactivateAllTools();editMode=!editMode;this.classList.toggle('active',editMode);
+  map.getContainer().style.cursor=editMode?'pointer':'';updateMarkerInteractivity();
+});
+document.getElementById('btnClear').addEventListener('click',function(){drawnItems.clearLayers();editMode=false;document.getElementById('btnEdit').classList.remove('active');cleanupDraw();});
+
+// Measure
+var measureActive=false,measureAllLayers=[],measurePairCount=0,measureTotalDist=0;
+var measureStep=0,measureTempMarker=null;
+var pairColors=['#ff5722','#1e88e5','#43a047','#ff9800','#9c27b0','#00bcd4','#e53935','#795548'];
+document.getElementById('btnMeasure').addEventListener('click',function(){
+  if(drawMode)cleanupDraw();
+  measureActive=!measureActive;this.classList.toggle('active',measureActive);
+  if(measureActive){measureStep=0;measureTempMarker=null;
+    document.getElementById('measureHint').textContent='点击起点（第'+(measurePairCount+1)+'组）';
+    document.getElementById('segDist').textContent='-';
+  }
+  document.getElementById('measureInfo').style.display=measureActive?'block':'none';
+  map.getContainer().style.cursor=measureActive?'crosshair':'';updateMarkerInteractivity();
+});
+map.on('click',function(e){
+  if(!measureActive&&!isBatchMeasureActive)return;
+  if(e.originalEvent.target.closest('.leaflet-control')||e.originalEvent.target.closest('.panel')||e.originalEvent.target.closest('#toolbar')||e.originalEvent.target.closest('#batchMeasurePanel')||e.originalEvent.target.closest('#circleRadiusPanel'))return;
+  if(isBatchMeasureActive){calcDistances(e.latlng);return;}
+  addMeasurePairPt(e.latlng);
+});
+function haversine(lat1,lng1,lat2,lng2){
+  var R=6371,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function addMeasurePairPt(latlng){
+  var c=pairColors[measurePairCount%pairColors.length];
+  if(measureStep===0){
+    measureTempMarker=L.circleMarker(latlng,{radius:5,color:c,fillColor:c,fillOpacity:1,weight:2,pane:'drawPane'}).addTo(map);
+    measureAllLayers.push(measureTempMarker);
+    measureStep=1;
+    document.getElementById('measureHint').textContent='点击终点（第'+(measurePairCount+1)+'组）';
+    document.getElementById('measureHint').style.color=c;
+  } else {
+    var p1=measureTempMarker.getLatLng();
+    var d=haversine(p1.lat,p1.lng,latlng.lat,latlng.lng);
+    measurePairCount++;measureTotalDist+=d;
+    measureAllLayers.push(L.circleMarker(latlng,{radius:5,color:c,fillColor:c,fillOpacity:1,weight:2,pane:'drawPane'}).addTo(map));
+    measureAllLayers.push(L.polyline([p1,latlng],{color:c,weight:2.5,dashArray:'6,6',pane:'drawPane'}).addTo(map));
+    measureAllLayers.push(L.marker([(p1.lat+latlng.lat)/2,(p1.lng+latlng.lng)/2],{
+      icon:L.divIcon({html:'<div style="background:rgba(0,0,0,0.78);color:'+c+';padding:2px 8px;border-radius:4px;font-size:12px;font-weight:700;white-space:nowrap;border:1px solid '+c+'">'+d.toFixed(2)+' km</div>',className:'',iconSize:[0,0]}),interactive:false,pane:'drawPane'
+    }).addTo(map));
+    document.getElementById('segDist').textContent=d.toFixed(2);
+    document.getElementById('totalDist').textContent=measureTotalDist.toFixed(2);
+    document.getElementById('measurePairInfo').textContent='已完成 '+measurePairCount+' 组';
+    measureStep=0;measureTempMarker=null;
+    document.getElementById('measureHint').textContent='点击起点（第'+(measurePairCount+1)+'组）';
+    var nc=pairColors[measurePairCount%pairColors.length];
+    document.getElementById('measureHint').style.color=nc;
+  }
+}
+document.getElementById('btnFinishMeasure').addEventListener('click',function(){measureActive=false;measureStep=0;measureTempMarker=null;document.getElementById('btnMeasure').classList.remove('active');document.getElementById('measureInfo').style.display='none';map.getContainer().style.cursor='';updateMarkerInteractivity();});
+document.getElementById('btnClearMeasure').addEventListener('click',function(){measureAllLayers.forEach(function(l){map.removeLayer(l);});measureAllLayers=[];measurePairCount=0;measureTotalDist=0;measureStep=0;measureTempMarker=null;document.getElementById('segDist').textContent='-';document.getElementById('totalDist').textContent='0';document.getElementById('measurePairInfo').textContent='';document.getElementById('measureHint').textContent='点击起点';document.getElementById('measureHint').style.color='#aaa';measureActive=false;document.getElementById('btnMeasure').classList.remove('active');document.getElementById('measureInfo').style.display='none';map.getContainer().style.cursor='';updateMarkerInteractivity();});
+
+// Batch Measure
+var isBatchMeasureActive=false,batchMeasureLayers=[];
+function clearBatch(){batchMeasureLayers.forEach(function(l){map.removeLayer(l);});batchMeasureLayers=[];document.getElementById('batchMeasureList').innerHTML='';document.getElementById('batchTotalDist').textContent='0';}
+function distColor(d,mx){var r=Math.min(d/mx,1);return'rgb('+Math.round(76+153*r)+','+Math.round(175-118*r)+','+Math.round(80-27*r)+')';}
+function calcDistances(latlng){
+  clearBatch();
+  batchMeasureLayers.push(L.circleMarker(latlng,{radius:16,color:'#ff9800',fillColor:'#ff9800',fillOpacity:0.25,weight:3,pane:'drawPane'}).addTo(map));
+  var distances=[];
+  if(showCJ)cjFactories.forEach(function(f){var m=cjMarkers[f.name];if(!m||!map.hasLayer(m))return;distances.push({name:f.name,lat:f.lat,lng:f.lng,dist:haversine(latlng.lat,latlng.lng,f.lat,f.lng),icon:'★',color:'#e53935'});});
+  if(showComp)competitors.forEach(function(c,i){var m=compMarkers[i];if(!m||!map.hasLayer(m))return;distances.push({name:c.name,lat:c.lat,lng:c.lng,dist:haversine(latlng.lat,latlng.lng,c.lat,c.lng),icon:'▶',color:'#1e88e5'});});
+  if(showAvail)availableData.forEach(function(a,i){var m=availMarkers[i];if(!m||!map.hasLayer(m))return;distances.push({name:a.name,lat:a.lat,lng:a.lng,dist:haversine(latlng.lat,latlng.lng,a.lat,a.lng),icon:'●',color:'#43a047'});});
+  if(showWatch)watchingData.forEach(function(w,i){var m=watchMarkers[i];if(!m||!map.hasLayer(m))return;distances.push({name:w.name,lat:w.lat,lng:w.lng,dist:haversine(latlng.lat,latlng.lng,w.lat,w.lng),icon:'●',color:'#42a5f5'});});
+  distances.sort(function(a,b){return a.dist-b.dist;});
+  var mx=distances.length>0?distances[distances.length-1].dist:1;
+  distances.forEach(function(item){
+    var c=distColor(item.dist,mx);
+    batchMeasureLayers.push(L.polyline([latlng,[item.lat,item.lng]],{color:c,weight:1.5,opacity:0.5,dashArray:'4,4',pane:'drawPane'}).addTo(map));
+    batchMeasureLayers.push(L.marker([(latlng.lat+item.lat)/2,(latlng.lng+item.lng)/2],{icon:L.divIcon({html:'<div style="background:rgba(0,0,0,0.7);color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;white-space:nowrap">'+item.dist.toFixed(0)+'km</div>',className:'',iconSize:[0,0]}),interactive:false,pane:'drawPane'}).addTo(map));
+    batchMeasureLayers.push(L.circleMarker([item.lat,item.lng],{radius:5,color:item.color,fillColor:item.color,fillOpacity:0.9,weight:2,pane:'drawPane'}).addTo(map));
+  });
+  var lh='';
+  distances.forEach(function(item,idx){
+    lh+='<div class="batch-result-item" style="display:flex;align-items:center;padding:5px 4px;border-bottom:1px solid rgba(255,255,255,0.05);cursor:pointer;" data-idx="'+idx+'"><span style="min-width:22px;color:#888;font-size:11px;text-align:center;">'+(idx+1)+'</span><span style="color:'+item.color+';font-size:12px;margin:0 3px;">'+item.icon+'</span><span style="width:8px;height:8px;border-radius:50%;background:'+distColor(item.dist,mx)+';margin:0 4px;"></span><span style="flex:1;font-size:12px;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+item.name+'">'+item.name+'</span><span style="min-width:65px;text-align:right;font-size:12px;color:#ff8a65;font-weight:600;">'+item.dist.toFixed(1)+' km</span></div>';
+  });
+  document.getElementById('batchMeasureList').innerHTML=lh;
+  document.querySelectorAll('.batch-result-item').forEach(function(row,idx){row.addEventListener('click',function(){var d=distances[idx];map.setView([d.lat,d.lng],10);});});
+  var td=distances.reduce(function(s,d){return s+d.dist;},0);
+  document.getElementById('batchTotalDist').textContent='共'+distances.length+'点 · 均'+(distances.length?(td/distances.length).toFixed(1):0)+'km';
+}
+document.getElementById('btnBatchMeasure').addEventListener('click',function(){
+  if(isBatchMeasureActive){isBatchMeasureActive=false;this.classList.remove('active');document.getElementById('batchMeasurePanel').style.display='none';clearBatch();map.getContainer().style.cursor='';updateMarkerInteractivity();return;}
+  deactivateAllTools();isBatchMeasureActive=true;this.classList.add('active');document.getElementById('batchMeasurePanel').style.display='block';clearBatch();
+  document.getElementById('batchMeasureHint').textContent='点击任意点位，计算所有显示点到它的距离';
+  map.getContainer().style.cursor='crosshair';updateMarkerInteractivity();
+});
+document.getElementById('btnFinishBatch').addEventListener('click',function(){isBatchMeasureActive=false;document.getElementById('btnBatchMeasure').classList.remove('active');document.getElementById('batchMeasurePanel').style.display='none';clearBatch();map.getContainer().style.cursor='';updateMarkerInteractivity();});
+document.getElementById('btnClearBatch').addEventListener('click',function(){clearBatch();isBatchMeasureActive=false;document.getElementById('btnBatchMeasure').classList.remove('active');document.getElementById('batchMeasurePanel').style.display='none';map.getContainer().style.cursor='';updateMarkerInteractivity();});
+
+// Popup management
+function updateMarkerInteractivity(){
+  var anyTool=drawMode||measureActive||isBatchMeasureActive;
+  if(anyTool)map.getContainer().classList.add('no-marker-interaction');
+  else map.getContainer().classList.remove('no-marker-interaction');
+}
+
+// Fit bounds
+function fitAll(){
+  var all=[];
+  cjFactories.forEach(function(f){all.push([f.lat,f.lng]);});
+  competitors.forEach(function(c){all.push([c.lat,c.lng]);});
+  availableData.forEach(function(a){all.push([a.lat,a.lng]);});
+  watchingData.forEach(function(w){all.push([w.lat,w.lng]);});
+  if(all.length>0)map.fitBounds(all,{padding:[40,40]});
+}
+
+// Excel import
+document.getElementById('btnImport').addEventListener('click',function(){document.getElementById('importFileInput').click();});
+document.getElementById('importFileInput').addEventListener('change',function(e){
+  var file=e.target.files[0];if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(evt){
+    try{
+      var data=new Uint8Array(evt.target.result);var wb=XLSX.read(data,{type:'array'});
+      function parseSheet(sn,mapping){
+        var sheet=wb.Sheets[sn];if(!sheet)return[];
+        var rows=XLSX.utils.sheet_to_json(sheet);var result=[];
+        rows.forEach(function(r){
+          var item={};
+          Object.keys(mapping).forEach(function(k){item[k]=(r[mapping[k]]||'').toString().trim();});
+          var coord=item.coord||'';var p=coord.split(',');
+          if(p.length===2){item.lng=parseFloat(p[0]);item.lat=parseFloat(p[1]);}
+          if(item.lng&&item.lat)result.push(item);
+        });
+        return result;
+      }
+      var nc=parseSheet('嘉吉工厂',{name:'嘉吉工厂',remark:'备注',coord:'坐标'});
+      if(nc.length>0){cjFactories=nc;}
+      var ncomp=parseSheet('竞争厂家',{factory:'嘉吉工厂',name:'工厂名称',remark:'备注',coord:'坐标'});
+      if(ncomp.length>0){competitors=ncomp;}
+      var na=parseSheet('可用',{factory:'嘉吉工厂',material:'原料名称',name:'厂家名称',remark:'备注',coord:'坐标'});
+      if(na.length>0){availableData=na;}
+      var nw=parseSheet('关注',{factory:'嘉吉工厂',material:'原料名称',name:'厂家名称',remark:'备注',coord:'坐标'});
+      if(nw.length>0){watchingData=nw;}
+      pinnedTooltips.clear();filterCJ=null;document.getElementById('cjSearch').value='';
+      buildMarkers();updateAll();fitAll();
+      showToast('导入成功！嘉吉'+cjFactories.length+' | 竞争'+competitors.length+' | 可用'+availableData.length+' | 关注'+watchingData.length);
+    }catch(err){console.error(err);showToast('导入失败：'+err.message,true);}
+    e.target.value='';
+  };reader.readAsArrayBuffer(file);
+});
+
+function showToast(msg,isErr){
+  var t=document.getElementById('toast');
+  if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:2000;padding:10px 24px;border-radius:8px;font-size:14px;color:#fff;background:rgba(30,160,80,0.92);backdrop-filter:blur(8px);box-shadow:0 4px 16px rgba(0,0,0,0.3);transition:opacity 0.3s;pointer-events:none;';document.body.appendChild(t);}
+  t.style.background=isErr?'rgba(200,40,40,0.92)':'rgba(30,160,80,0.92)';t.textContent=msg;t.style.opacity='1';
+  clearTimeout(t._timer);t._timer=setTimeout(function(){t.style.opacity='0';},3500);
+}
+
+// INIT
+buildMarkers();updateAll();fitAll();
+
+// TOOLTIP TOGGLE
+document.getElementById('btnTooltip').addEventListener('click',function(){
+  tooltipPermanent=!tooltipPermanent;
+  this.style.opacity=tooltipPermanent?'0.5':'1';
+  this.title='悬停提示: '+(tooltipPermanent?'关':'开');
+  buildMarkers();
+});
+
+</script>
+</body>
+</html>
